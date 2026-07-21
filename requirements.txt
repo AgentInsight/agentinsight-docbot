@@ -1,0 +1,106 @@
+# agentinsight-docbot 运行时依赖锁定文件
+# 此文件由 pip-compile 从 requirements.in 生成, 请勿手动修改。
+# 重新生成: pip-compile requirements.in
+# 技术栈与禁用清单
+# 禁用: langchain 全家桶(仅 langchain-core 可用) / AgentExecutor / AutoGen / CrewAI / LlamaIndex
+#        LangSmith / Langfuse / Pinecone / 厂商 SDK 直连 / Memcached / MySQL / pickle 持久化
+#
+# 本文件仅含运行时依赖 (== 精确锁定); 评测/测试/代码质量见 requirements-dev.txt
+# 版本锁定策略: 取 requirements.in 中 >= 指定的最低版本作为锁定版本 (保守策略, 确保兼容)
+#
+# 与 agentinsight-researcher 的差异:
+# - 移除: playwright / arxiv / ddgs / curl_cffi / trafilatura / markdownify (web 抓取/搜索栈)
+# - 新增: mcp-server-git (系统自带 Git MCP 子进程, Python uvx 启动)
+# - 注: mcp-server-filesystem 是 Node.js 包 (@modelcontextprotocol/server-filesystem),
+#       由 Dockerfile npm install -g 预装, 不在此文件中
+
+# === 编排内核 ===
+langgraph==1.2.8
+langgraph-checkpoint==4.1.1
+langgraph-checkpoint-postgres==3.1.0
+langchain-core==1.4.8
+langchain-mcp-adapters==0.3.0
+
+# === LLM 网关 (禁厂商 SDK 直连) ===
+litellm==1.91.0
+openai==2.44.0  # 仅作 LiteLLM 底层依赖, 业务代码禁止直接使用
+
+# === MCP 工具协议 ===
+mcp==1.28.1
+
+# === Web 框架 ===
+fastapi==0.139.0
+uvicorn[standard]==0.50.2
+starlette==1.3.1  # fastapi 底层依赖, 但 middleware.py 直接 import, 需显式声明
+python-multipart==0.0.32
+aiofiles==25.1.0
+
+# === 数据校验 ===
+pydantic==2.13.4
+pydantic-settings==2.14.2
+
+# === 关系库 + 缓存 (Checkpointer+会话) ===
+psycopg[binary]==3.3.4
+psycopg-pool==3.3.1  # langgraph-checkpoint-postgres 依赖, checkpointer.py 直接 import
+redis==8.0.1
+asyncpg==0.31.0
+
+# === 向量库 ===
+qdrant-client==1.18.0
+
+# === Embeddings + Rerank (bge-base-zh-v1.5 固定 768 维) ===
+# 远程 TEI 服务调用, 无需本地模型包; 仅需 HTTP 客户端
+
+# === FastEmbed 本地 Embeddings (上下文压缩用, bge-small-zh-v1.5 ONNX) ===
+fastembed==0.8.0  # ONNX INT8 量化, 本地 CPU 推理, ~100MB 内存
+onnxruntime==1.27.0  # FastEmbed 底层依赖
+
+# === BM25 + 中文分词 ===
+rank-bm25==0.2.2
+jieba==0.42.1
+
+# === 可观测性 (禁 LangSmith/Langfuse/OTel 原生 API) ===
+agentinsight-sdk==0.1.5
+opentelemetry-sdk==1.43.0  # 仅作 agentinsight-sdk 底层依赖, 业务代码禁止直接使用
+opentelemetry-exporter-otlp-proto-http==1.43.0
+
+# === 通用 HTTP 客户端 + SSL ===
+httpx==0.28.1  # LiteLLM/TEI/Qdrant/HTTP API 通用客户端
+certifi==2026.6.17  # 显式 CA 包, 解决 Windows/容器 SSL CERTIFICATE_VERIFY_FAILED
+
+# === 文档加载 (代码仓库内 Office/PDF 文档解析) ===
+# 仅 langchain-core 允许, 文档加载器自研薄封装避免引入 langchain-community
+python-docx==1.2.0  # DOCX 文件解析 (代码仓库内设计文档)
+openpyxl==3.1.5  # XLSX 文件解析 (代码仓库内数据字典)
+python-pptx==1.0.2  # PPTX 文件解析 (代码仓库内架构图说明)
+markitdown==0.1.6  # Office 文档转 Markdown (统一为 Markdown 输入 LLM)
+pypdf==5.6.0  # PDF 抓取与解析 (BSD-3-Clause, 纯 Python 无原生依赖)
+
+# === 报告输出 (MD/HTML/PDF/DOCX/JSON) ===
+jinja2==3.1.6  # HTML 模板
+weasyprint==69.0  # PDF 输出(纯 Python, 中文支持好)
+mistune==3.3.2  # Markdown 解析
+cairosvg>=2.7.0  # SVG 转 PNG (DOCX 配图渲染, 可选)
+beautifulsoup4==4.15.0  # HTML 解析 (报告后处理)
+lxml==6.1.1  # beautifulsoup4 后端 + XML 解析
+
+# === 加密 (user_git_repos 敏感字段 AES-GCM 加解密) ===
+cryptography>=43.0.0  # AES-GCM (token/password/ssh_key 加密存储)
+
+# === 系统 MCP 服务 (系统自带, uvx 拉起) ===
+# 注: mcp-server-git 不直接安装到 site-packages, 由 server.py lifespan 通过 uvx 拉起独立子进程
+# QA 离线模式: 通过 packages/tools/uv/ 预装 uv 二进制, mcp-server-git wheel 由 uvx 从本地缓存查找
+# 生产联网模式: uvx 首次调用时从 PyPI 联网拉取
+# mcp-server-git==2025.1.14  # 已移除 (uvx 运行时拉起, 不需在 requirements.txt 中)
+
+# === JSON 容错 ===
+json-repair==0.61.2
+
+# === 工具库 ===
+orjson==3.11.9  # 快速 JSON
+pyyaml==6.0.3  # 配置文件
+python-dotenv==1.2.2  # .env 加载
+numpy==2.5.1  # 语义路由矩阵化余弦相似度
+
+# === JWT 本地解析 (middleware.py 本地验证 Token) ===
+PyJWT==2.13.0  # HS256 本地 JWT 解析, 替代远程 API 验证

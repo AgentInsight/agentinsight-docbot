@@ -1,0 +1,205 @@
+# agentinsight-docbot Python 项目配置
+# Python ≥3.11
+
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "agentinsight-docbot"
+version = "1.2.0"
+description = "代码仓库技术文档生成智能体, 基于 LangGraph + LiteLLM + Qdrant"
+requires-python = ">=3.11"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "AgentInsight Team" },
+]
+keywords = [
+    "ai-agent",
+    "langgraph",
+    "rag",
+    "research-agent",
+    "mcp",
+    "fastapi",
+    "qdrant",
+    "chinese",
+    "openai-compatible",
+    "litellm",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    # 编排内核
+    "langgraph>=1.2",
+    "langgraph-checkpoint>=4.1",
+    "langgraph-checkpoint-postgres>=2.0",
+    "langchain-core>=1.4",
+    "langchain-mcp-adapters>=0.1",
+    # LLM 网关
+    "litellm>=1.6",
+    "openai>=2.43",
+    # MCP 工具协议
+    "mcp>=1.0",
+    # Web 框架
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.49",
+    "starlette>=0.40",
+    "python-multipart>=0.0.32",
+    "aiofiles>=25.1",
+    # 数据校验
+    "pydantic>=2.10",
+    "pydantic-settings>=2.14",
+    # 关系库 + 缓存
+    "psycopg[binary]>=3.2",
+    "psycopg-pool>=3.2",
+    "redis>=5.0",
+    "asyncpg>=0.30",
+    # 向量库
+    "qdrant-client>=1.18",
+    # FastEmbed 本地 Embeddings
+    "fastembed>=0.4",
+    "onnxruntime>=1.17",
+    # BM25 + 中文分词
+    "rank-bm25>=0.2.2",
+    "jieba>=0.42.1",
+    # 可观测性
+    "agentinsight-sdk>=0.1.5",
+    "opentelemetry-sdk>=1.42",
+    "opentelemetry-exporter-otlp-proto-http>=1.42",
+    # 搜索引擎
+    "httpx>=0.28",
+    # 网页抓取
+    "beautifulsoup4>=4.12",
+    "lxml>=5.0",
+    "pypdf>=5.4",  # PDF 抓取与解析 (BSD-3-Clause)
+    # 文档加载
+    "python-docx>=1.1",
+    "openpyxl>=3.1",
+    "python-pptx>=0.6",
+    "markitdown>=0.0.1a2",
+    # 报告输出
+    "jinja2>=3.1",
+    "weasyprint>=62.0",
+    "mistune>=3.0",
+    "cairosvg>=2.7.0",  # SVG 转 PNG (DOCX 配图渲染, 可选)
+    # Git MCP 工具
+    "cryptography>=43.0.0",
+    "mcp-server-git>=2025.1.14",
+    # JSON 容错
+    "json-repair>=0.30",
+    # 工具库
+    "orjson>=3.10",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "numpy>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ragas>=0.2",
+    "deepeval>=2.0",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "pip-tools>=7.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/AgentInsight/agentinsight-docbot"
+Repository = "https://github.com/AgentInsight/agentinsight-docbot"
+Documentation = "https://github.com/AgentInsight/agentinsight-docbot/tree/main/docs"
+"Bug Tracker" = "https://github.com/AgentInsight/agentinsight-docbot/issues"
+Changelog = "https://github.com/AgentInsight/agentinsight-docbot/blob/main/CHANGELOG.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "B", "C4", "UP", "ASYNC"]
+ignore = ["E501"]  # 行长由 formatter 管
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q --tb=short --ignore=tests/manual"
+markers = [
+    "unit: 单元测试 (构建期, 不依赖外部服务)",
+    "functional: 功能测试 (部署后容器栈)",
+    "regression: 回归测试 (合并 main 前门禁)",
+    "api: API 测试 (OpenAI 兼容端点)",
+    "e2e: 端到端测试 (完整链路)",
+    "performance: 性能测试 (延迟/吞吐/负载, 部署后容器栈)",
+    "exploratory: 探索性测试 (边界/降级场景, 部署后容器栈, 非合并门禁)",
+    "smoke: 冒烟测试",
+    "security: 安全测试",
+    "integration: 集成测试",
+    # 条件性测试 mark (通过 conftest.py 配置管理, 不在测试函数内 pytest.skip)
+    "requires_self_host_false: 需要服务端 SELF_HOST=False (强制 JWT 校验, 401 测试)",
+    "requires_human_review: 需要服务端 human_review_enabled=True (人在回路测试)",
+    "requires_websocket: 需要 WebSocket 端点可用 (WS 消息测试, 不依赖 human_review)",
+    "requires_psutil: 需要 psutil 库 (内存监控测试, 可选依赖)",
+]
+# 抑制第三方库不可控的警告 (业务代码已修复的除外)
+# 格式: action:message:category:module:lineno (category 为空则匹配任意类别)
+# 注意: message 是正则前缀匹配, category 必须在第 3 字段 (两个冒号之间不能为空)
+filterwarnings = [
+    # fastapi testclient 内部依赖 httpx 已弃用, 需等 fastapi 升级到 httpx2
+    # 注意: StarletteDeprecationWarning 继承自 UserWarning (非 DeprecationWarning)
+    "ignore:Using `httpx` with `starlette.testclient` is deprecated:UserWarning",
+    # httpx/asyncio 内部 transport 未完全关闭 (TestClient 限制, 业务代码无法消除)
+    "ignore:unclosed transport <_ProactorSocketTransport:ResourceWarning",
+    "ignore:unclosed transport <asyncio._SSLProtocolTransport:ResourceWarning",
+    "ignore:Enable tracemalloc to get traceback:ResourceWarning",
+    # agentinsight SDK pydantic v1 兼容层在 Python 3.14 下的警告 (第三方库, 等待 SDK 升级)
+    "ignore::UserWarning:agentinsight.api.core.pydantic_utilities",
+    # jieba 依赖 pkg_resources (已被 setuptools 弃用, 等待 jieba 升级)
+    "ignore::UserWarning:jieba._compat",
+    # litellm Logging.async_success_handler coroutine 未 await (第三方库, 等待 litellm 修复)
+    "ignore::RuntimeWarning:litellm.litellm_core_utils.logging_worker",
+    # langchain_core Pydantic V1 兼容层警告 (第三方库, 等待 langchain_core 升级)
+    "ignore:Core Pydantic V1 functionality isn't compatible:UserWarning:langchain_core.utils.pydantic",
+]
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["*/tests/*", "*/test_*.py"]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]

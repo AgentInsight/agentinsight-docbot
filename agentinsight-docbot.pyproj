@@ -1,0 +1,194 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003" DefaultTargets="Build">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{942fa16e-0a84-4848-9451-f06d903267eb}</ProjectGuid>
+    <ProjectHome />
+    <StartupFile>server.py</StartupFile>
+    <SearchPath />
+    <WorkingDirectory>.</WorkingDirectory>
+    <OutputPath>.</OutputPath>
+    <ProjectTypeGuids>{888888a0-9f3d-457c-b088-3a5042f75d52}</ProjectTypeGuids>
+    <LaunchProvider>Standard Python launcher</LaunchProvider>
+    <InterpreterId />
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'" />
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'" />
+  <PropertyGroup>
+    <VisualStudioVersion Condition=" '$(VisualStudioVersion)' == '' ">10.0</VisualStudioVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="requirements-dev.txt" />
+    <Content Include="requirements.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="server.py" />
+    <Compile Include="src\agents\docbot\content_filler.py" />
+    <Compile Include="src\agents\docbot\coordinator.py" />
+    <Compile Include="src\agents\docbot\final_reviewer.py" />
+    <Compile Include="src\agents\docbot\merger.py" />
+    <Compile Include="src\agents\docbot\outline_refiner.py" />
+    <Compile Include="src\agents\docbot\report_runner.py" />
+    <Compile Include="src\agents\docbot\reviewer.py" />
+    <Compile Include="src\agents\docbot\__init__.py" />
+    <Compile Include="src\api\ip_user_resolver.py" />
+    <Compile Include="src\api\middleware.py" />
+    <Compile Include="src\api\repo_routes.py" />
+    <Compile Include="src\api\routes.py" />
+    <Compile Include="src\api\session_routes.py" />
+    <Compile Include="src\api\__init__.py" />
+    <Compile Include="src\common\circuit_breaker.py" />
+    <Compile Include="src\common\exceptions.py" />
+    <Compile Include="src\common\http_client.py" />
+    <Compile Include="src\common\json_utils.py" />
+    <Compile Include="src\common\llm_key_resolver.py" />
+    <Compile Include="src\common\redis_client.py" />
+    <Compile Include="src\common\redis_lock.py" />
+    <Compile Include="src\common\__init__.py" />
+    <Compile Include="src\config\docbot\outlines.py" />
+    <Compile Include="src\config\docbot\personas.py" />
+    <Compile Include="src\config\docbot\prompts.py" />
+    <Compile Include="src\config\docbot\__init__.py" />
+    <Compile Include="src\config\settings.py" />
+    <Compile Include="src\config\__init__.py" />
+    <Compile Include="src\graph\builder.py" />
+    <Compile Include="src\graph\edges.py" />
+    <Compile Include="src\graph\nodes.py" />
+    <Compile Include="src\graph\report_builder.py" />
+    <Compile Include="src\graph\report_nodes.py" />
+    <Compile Include="src\graph\state.py" />
+    <Compile Include="src\graph\__init__.py" />
+    <Compile Include="src\llm\client.py" />
+    <Compile Include="src\llm\token_budget.py" />
+    <Compile Include="src\llm\__init__.py" />
+    <Compile Include="src\memory\checkpointer.py" />
+    <Compile Include="src\memory\db_initializer.py" />
+    <Compile Include="src\memory\report_store.py" />
+    <Compile Include="src\memory\session_store.py" />
+    <Compile Include="src\memory\__init__.py" />
+    <Compile Include="src\observability\tracing.py" />
+    <Compile Include="src\observability\__init__.py" />
+    <Compile Include="src\rag\bm25_filter.py" />
+    <Compile Include="src\rag\embeddings.py" />
+    <Compile Include="src\rag\embeddings_filter.py" />
+    <Compile Include="src\rag\fastembed_client.py" />
+    <Compile Include="src\rag\qdrant_manager.py" />
+    <Compile Include="src\rag\retriever.py" />
+    <Compile Include="src\rag\__init__.py" />
+    <Compile Include="src\skills\docbot\cache.py" />
+    <Compile Include="src\skills\docbot\code_learner.py" />
+    <Compile Include="src\skills\docbot\content_skill.py" />
+    <Compile Include="src\skills\docbot\final_skill.py" />
+    <Compile Include="src\skills\docbot\merge_skill.py" />
+    <Compile Include="src\skills\docbot\outline_skill.py" />
+    <Compile Include="src\skills\docbot\repo_loader.py" />
+    <Compile Include="src\skills\docbot\review_skill.py" />
+    <Compile Include="src\skills\docbot\__init__.py" />
+    <Compile Include="src\skills\researcher\image_generator.py" />
+    <Compile Include="src\skills\researcher\publisher.py" />
+    <Compile Include="src\skills\researcher\__init__.py" />
+    <Compile Include="src\skills\__init__.py" />
+    <Compile Include="src\tools\git_mcp.py" />
+    <Compile Include="src\tools\__init__.py" />
+    <Compile Include="src\__init__.py" />
+    <Compile Include="tests\api\test_data_isolation.py" />
+    <Compile Include="tests\api\test_endpoint_not_exist.py" />
+    <Compile Include="tests\api\test_health_detailed.py" />
+    <Compile Include="tests\api\test_ip_based_auth.py" />
+    <Compile Include="tests\api\test_jwt_auth.py" />
+    <Compile Include="tests\api\test_models_endpoint.py" />
+    <Compile Include="tests\api\test_openai_compatible.py" />
+    <Compile Include="tests\api\__init__.py" />
+    <Compile Include="tests\conftest.py" />
+    <Compile Include="tests\e2e\test_generate_docs_flow.py" />
+    <Compile Include="tests\e2e\__init__.py" />
+    <Compile Include="tests\exploratory\test_config_combinations.py" />
+    <Compile Include="tests\exploratory\test_degradation.py" />
+    <Compile Include="tests\exploratory\test_edge_cases.py" />
+    <Compile Include="tests\exploratory\__init__.py" />
+    <Compile Include="tests\functional\test_chat_completions.py" />
+    <Compile Include="tests\functional\test_report_download.py" />
+    <Compile Include="tests\functional\test_repo_crud.py" />
+    <Compile Include="tests\functional\test_repo_sync.py" />
+    <Compile Include="tests\functional\test_repo_test_connection.py" />
+    <Compile Include="tests\functional\test_session_management.py" />
+    <Compile Include="tests\functional\__init__.py" />
+    <Compile Include="tests\integration\test_database_init.py" />
+    <Compile Include="tests\integration\test_mcp_subprocess.py" />
+    <Compile Include="tests\integration\test_postgres_init_script.py" />
+    <Compile Include="tests\integration\test_qdrant_namespace.py" />
+    <Compile Include="tests\integration\__init__.py" />
+    <Compile Include="tests\performance\conftest.py" />
+    <Compile Include="tests\performance\test_concurrent_load.py" />
+    <Compile Include="tests\performance\test_latency.py" />
+    <Compile Include="tests\performance\test_throughput.py" />
+    <Compile Include="tests\performance\__init__.py" />
+    <Compile Include="tests\regression\test_concurrent_reports.py" />
+    <Compile Include="tests\regression\test_postgres_volume_recreate.py" />
+    <Compile Include="tests\regression\test_revision_loop.py" />
+    <Compile Include="tests\regression\test_session_persistence.py" />
+    <Compile Include="tests\regression\__init__.py" />
+    <Compile Include="tests\security\test_aes_gcm_encryption.py" />
+    <Compile Include="tests\security\test_allowed_git_domains.py" />
+    <Compile Include="tests\security\test_cors.py" />
+    <Compile Include="tests\security\test_endpoint_not_exist.py" />
+    <Compile Include="tests\security\test_init_sql_no_sensitive.py" />
+    <Compile Include="tests\security\test_no_sensitive_in_response.py" />
+    <Compile Include="tests\security\test_prompt_injection.py" />
+    <Compile Include="tests\security\test_repo_size_limit.py" />
+    <Compile Include="tests\security\__init__.py" />
+    <Compile Include="tests\smoke\test_app_create.py" />
+    <Compile Include="tests\smoke\test_database_health.py" />
+    <Compile Include="tests\smoke\test_health_endpoint.py" />
+    <Compile Include="tests\smoke\test_imports.py" />
+    <Compile Include="tests\smoke\test_outlines_loaded.py" />
+    <Compile Include="tests\smoke\__init__.py" />
+    <Compile Include="tests\unit\test_aes_gcm.py" />
+    <Compile Include="tests\unit\test_cache.py" />
+    <Compile Include="tests\unit\test_coordinator.py" />
+    <Compile Include="tests\unit\test_edges.py" />
+    <Compile Include="tests\unit\test_git_mcp_adapter.py" />
+    <Compile Include="tests\unit\test_init_sql.py" />
+    <Compile Include="tests\unit\test_outlines.py" />
+    <Compile Include="tests\unit\test_personas.py" />
+    <Compile Include="tests\unit\test_prompts.py" />
+    <Compile Include="tests\unit\test_qdrant_namespace.py" />
+    <Compile Include="tests\unit\test_report_store.py" />
+    <Compile Include="tests\unit\test_reviewer.py" />
+    <Compile Include="tests\unit\test_settings.py" />
+    <Compile Include="tests\unit\test_state.py" />
+    <Compile Include="tests\unit\__init__.py" />
+    <Compile Include="tests\__init__.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="src" />
+    <Folder Include="src\agents\" />
+    <Folder Include="src\agents\docbot" />
+    <Folder Include="src\api" />
+    <Folder Include="src\common" />
+    <Folder Include="src\config" />
+    <Folder Include="src\config\docbot" />
+    <Folder Include="src\graph" />
+    <Folder Include="src\llm" />
+    <Folder Include="src\memory" />
+    <Folder Include="src\observability" />
+    <Folder Include="src\rag" />
+    <Folder Include="src\skills" />
+    <Folder Include="src\skills\docbot" />
+    <Folder Include="src\skills\researcher" />
+    <Folder Include="src\tools" />
+    <Folder Include="tests" />
+    <Folder Include="tests\api" />
+    <Folder Include="tests\e2e" />
+    <Folder Include="tests\exploratory" />
+    <Folder Include="tests\functional" />
+    <Folder Include="tests\integration" />
+    <Folder Include="tests\performance" />
+    <Folder Include="tests\regression" />
+    <Folder Include="tests\security" />
+    <Folder Include="tests\smoke" />
+    <Folder Include="tests\unit" />
+  </ItemGroup>
+  <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
+</Project>

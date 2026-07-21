@@ -1,0 +1,629 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.10.11, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\Projects\Entrepreneurship\AIProjects\AgentInsightAgents\agentinsight-docbot
+configfile: pyproject.toml
+plugins: anyio-4.14.2, langsmith-0.10.6, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=auto, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 309 items / 2 skipped
+
+tests\unit\test_aes_gcm.py ....................                          [  6%]
+tests\unit\test_cache.py .............                                   [ 10%]
+tests\unit\test_edges.py .............                                   [ 14%]
+tests\unit\test_git_mcp_adapter.py ........................              [ 22%]
+tests\unit\test_init_sql.py .................                            [ 28%]
+tests\unit\test_outlines.py ................................             [ 38%]
+tests\unit\test_personas.py ......................................       [ 50%]
+tests\unit\test_prompts.py ..............ssss..s                         [ 57%]
+tests\unit\test_settings.py ....................                         [ 64%]
+tests\unit\test_state.py ...........                                     [ 67%]
+tests\smoke\test_app_create.py ssss                                      [ 68%]
+tests\smoke\test_health_endpoint.py ...                                  [ 69%]
+tests\smoke\test_imports.py ......ss.......ss.                           [ 75%]
+tests\smoke\test_outlines_loaded.py ............                         [ 79%]
+tests\security\test_aes_gcm_encryption.py ..........                     [ 82%]
+tests\security\test_allowed_git_domains.py .......s.....                 [ 87%]
+tests\security\test_cors.py ......                                       [ 88%]
+tests\security\test_endpoint_not_exist.py .......                        [ 91%]
+tests\security\test_no_sensitive_in_response.py .........ss              [ 94%]
+tests\security\test_prompt_injection.py ssss......                       [ 98%]
+tests\security\test_repo_size_limit.py ......                            [100%]
+
+============================== warnings summary ===============================
+tests/unit/test_cache.py::TestWriteReadCache::test_write_then_read_round_trip
+  D:\Projects\Entrepreneurship\AIProjects\AgentInsightAgents\agentinsight-docbot\src\skills\docbot\cache.py:101: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await redis.setex(key, resolved_ttl, value)
+
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+  D:\Projects\Entrepreneurship\AIProjects\AgentInsightAgents\agentinsight-docbot\tests\unit\test_cache.py:183: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await fake_redis.setex(k, 3600, "value")
+
+tests/unit/test_cache.py::TestDeleteCache::test_delete_cache_existing_key
+  D:\Projects\Entrepreneurship\AIProjects\AgentInsightAgents\agentinsight-docbot\tests\unit\test_cache.py:232: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await fake_redis.setex(key, 3600, "value")
+
+tests/unit/test_init_sql.py::TestInitSqlContent::test_init_sql_not_empty
+  C:\Users\Yingn\AppData\Roaming\TRAE SOLO CN\ModularData\ai-agent\vm\tools\python\lib\site-packages\_pytest\fixtures.py:1313: PytestRemovedIn10Warning: Class-scoped fixture defined as instance method is deprecated.
+  Instance attributes set in this fixture will NOT be visible to test methods,
+  as each test gets a new instance while the fixture runs only once per class.
+  Use @classmethod decorator and set attributes on cls instead.
+  See https://docs.pytest.org/en/stable/deprecations.html#class-scoped-fixture-as-instance-method
+    fixturefunc = resolve_fixture_function(fixturedef, request)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================= 289 passed, 22 skipped, 9 warnings in 1.91s =================
+============================= test session starts =============================
+platform win32 -- Python 3.10.11, pytest-9.1.1, pluggy-1.6.0
+rootdir: D:\Projects\Entrepreneurship\AIProjects\AgentInsightAgents\agentinsight-docbot
+configfile: pyproject.toml
+plugins: anyio-4.14.2, langsmith-0.10.6, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=auto, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 166 items
+
+tests\functional\test_chat_completions.py s                              [  0%]
+tests\functional\test_repo_crud.py ssssss                                [  4%]
+tests\functional\test_repo_sync.py sss                                   [  6%]
+tests\functional\test_repo_test_connection.py sss                        [  7%]
+tests\functional\test_report_download.py sssss                           [ 10%]
+tests\functional\test_session_management.py ssss                         [ 13%]
+tests\api\test_data_isolation.py ss                                      [ 14%]
+tests\api\test_endpoint_not_exist.py sss                                 [ 16%]
+tests\api\test_ip_based_auth.py s                                        [ 16%]
+tests\api\test_jwt_auth.py sss                                           [ 18%]
+tests\api\test_models_endpoint.py s                                      [ 19%]
+tests\api\test_openai_compatible.py sss                                  [ 21%]
+tests\regression\test_concurrent_reports.py s                            [ 21%]
+tests\regression\test_revision_loop.py s                                 [ 22%]
+tests\regression\test_session_persistence.py ss                          [ 23%]
+tests\e2e\test_generate_docs_flow.py s                                   [ 24%]
+tests\exploratory\test_config_combinations.py ssssssssssssssssssssssssss [ 39%]
+ssssssssssssssssssssssssssssssssssssssssssssssssssssss                   [ 72%]
+tests\exploratory\test_degradation.py ssssssss                           [ 77%]
+tests\exploratory\test_edge_cases.py ssss                                [ 79%]
+tests\performance\test_concurrent_load.py ssss                           [ 81%]
+tests\performance\test_latency.py sssss                                  [ 84%]
+tests\performance\test_throughput.py sssss                               [ 87%]
+tests\integration\test_database_init.py ssssss..                         [ 92%]
+tests\integration\test_mcp_subprocess.py sssssss                         [ 96%]
+tests\integration\test_qdrant_namespace.py sssss                         [100%]
+
+======================= 2 passed, 164 skipped in 0.19s ========================
+F401 [*] `fastapi.responses.JSONResponse` imported but unused
+  --> src\api\repo_routes.py:33:31
+   |
+31 | import asyncpg
+32 | from fastapi import APIRouter, HTTPException
+33 | from fastapi.responses import JSONResponse
+   |                               ^^^^^^^^^^^^
+34 | from pydantic import BaseModel, Field
+   |
+help: Remove unused import: `fastapi.responses.JSONResponse`
+
+F841 Local variable `settings` is assigned to but never used
+   --> src\api\repo_routes.py:581:5
+    |
+579 |     pool = await get_pool()
+580 |     adapter = get_git_mcp_adapter()
+581 |     settings = get_settings()
+    |     ^^^^^^^^
+582 |
+583 |     try:
+    |
+help: Remove assignment to unused variable `settings`
+
+F401 [*] `langchain_core.messages.AIMessage` imported but unused
+  --> src\api\routes.py:29:37
+   |
+27 | from fastapi import APIRouter, Header, HTTPException, Request
+28 | from fastapi.responses import JSONResponse, Response, StreamingResponse
+29 | from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+   |                                     ^^^^^^^^^
+30 | from pydantic import BaseModel, Field, StrictBool
+   |
+help: Remove unused import
+
+F401 [*] `langchain_core.messages.BaseMessage` imported but unused
+  --> src\api\routes.py:29:48
+   |
+27 | from fastapi import APIRouter, Header, HTTPException, Request
+28 | from fastapi.responses import JSONResponse, Response, StreamingResponse
+29 | from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+   |                                                ^^^^^^^^^^^
+30 | from pydantic import BaseModel, Field, StrictBool
+   |
+help: Remove unused import
+
+F401 [*] `langchain_core.messages.HumanMessage` imported but unused
+  --> src\api\routes.py:29:61
+   |
+27 | from fastapi import APIRouter, Header, HTTPException, Request
+28 | from fastapi.responses import JSONResponse, Response, StreamingResponse
+29 | from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+   |                                                             ^^^^^^^^^^^^
+30 | from pydantic import BaseModel, Field, StrictBool
+   |
+help: Remove unused import
+
+F401 [*] `typing.Any` imported but unused
+  --> src\tools\git_mcp.py:25:20
+   |
+23 | import uuid
+24 | from pathlib import Path
+25 | from typing import Any
+   |                    ^^^
+26 | from urllib.parse import quote, urlsplit, urlunsplit
+   |
+help: Remove unused import: `typing.Any`
+
+ASYNC109 Async function definition with a `timeout` parameter
+   --> src\tools\git_mcp.py:152:9
+    |
+150 |         cwd: str | Path | None = None,
+151 |         env: dict[str, str] | None = None,
+152 |         timeout: int = 300,
+    |         ^^^^^^^^^^^^^^^^^^
+153 |     ) -> tuple[int, str, str]:
+154 |         """异步执行 git 命令.
+    |
+help: Use `asyncio.timeout` instead
+
+UP041 [*] Replace aliased errors with `TimeoutError`
+   --> src\tools\git_mcp.py:176:16
+    |
+174 |             stderr = stderr_bytes.decode("utf-8", errors="replace")
+175 |             return process.returncode or 0, stdout, stderr
+176 |         except asyncio.TimeoutError:
+    |                ^^^^^^^^^^^^^^^^^^^^
+177 |             try:
+178 |                 process.kill()
+    |
+help: Replace `asyncio.TimeoutError` with builtin `TimeoutError`
+
+B904 Within an `except` clause, raise exceptions with `raise ... from err` or `raise ... from None` to distinguish them from errors in exception handling
+   --> src\tools\git_mcp.py:181:13
+    |
+179 |             except ProcessLookupError:
+180 |                 pass
+181 |             raise TimeoutError(f"git 命令超时 ({timeout}s): {' '.join(args[:3])}")
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+182 |
+183 |     def _check_repo_size(self, repo_path: Path) -> None:
+    |
+
+ASYNC240 Async functions should not use pathlib.Path methods, use trio.Path or anyio.path
+   --> src\tools\git_mcp.py:317:20
+    |
+315 |         ) as span:
+316 |             root = Path(repo_path)
+317 |             if not root.exists():
+    |                    ^^^^^^^^^^^
+318 |                 raise FileNotFoundError(f"仓库路径不存在: {repo_path}")
+    |
+
+ASYNC240 Async functions should not use pathlib.Path methods, use trio.Path or anyio.path
+   --> src\tools\git_mcp.py:358:46
+    |
+356 |             # 二次校验: 解析后必须在 root 内
+357 |             try:
+358 |                 target.resolve().relative_to(root.resolve())
+    |                                              ^^^^^^^^^^^^
+359 |             except ValueError as e:
+360 |                 raise ValueError(f"file_path 越界仓库根目录: {file_path}") from e
+    |
+
+F401 [*] `os` imported but unused
+  --> tests\conftest.py:19:8
+   |
+18 | import asyncio
+19 | import os
+   |        ^^
+20 | import sys
+21 | from collections.abc import AsyncIterator, Iterator
+   |
+help: Remove unused import: `os`
+
+F401 [*] `collections.abc.AsyncIterator` imported but unused
+  --> tests\conftest.py:21:29
+   |
+19 | import os
+20 | import sys
+21 | from collections.abc import AsyncIterator, Iterator
+   |                             ^^^^^^^^^^^^^
+22 | from pathlib import Path
+23 | from typing import Any
+   |
+help: Remove unused import: `collections.abc.AsyncIterator`
+
+F541 [*] f-string without any placeholders
+  --> tests\integration\test_database_init.py:77:16
+   |
+75 |     content = _INIT_SQL_PATH.read_text(encoding="utf-8")
+76 |     for table in EXPECTED_TABLES:
+77 |         assert f"CREATE TABLE" in content.upper(), f"未找到 CREATE TABLE 语句"
+   |                ^^^^^^^^^^^^^^^
+78 |         # 表名应出现在 SQL 中
+79 |         assert table.lower() in content.lower(), f"表 {table} 未在 init.sql 中定义"
+   |
+help: Remove extraneous `f` prefix
+
+F541 [*] f-string without any placeholders
+  --> tests\integration\test_database_init.py:77:52
+   |
+75 |     content = _INIT_SQL_PATH.read_text(encoding="utf-8")
+76 |     for table in EXPECTED_TABLES:
+77 |         assert f"CREATE TABLE" in content.upper(), f"未找到 CREATE TABLE 语句"
+   |                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+78 |         # 表名应出现在 SQL 中
+79 |         assert table.lower() in content.lower(), f"表 {table} 未在 init.sql 中定义"
+   |
+help: Remove extraneous `f` prefix
+
+F401 [*] `typing.Any` imported but unused
+  --> tests\performance\conftest.py:11:20
+   |
+ 9 | from __future__ import annotations
+10 |
+11 | from typing import Any
+   |                    ^^^
+12 | from unittest.mock import MagicMock
+   |
+help: Remove unused import: `typing.Any`
+
+F401 [*] `asyncio` imported but unused
+  --> tests\performance\test_concurrent_load.py:13:8
+   |
+11 | from __future__ import annotations
+12 |
+13 | import asyncio
+   |        ^^^^^^^
+14 | import time
+15 | from typing import Any
+   |
+help: Remove unused import: `asyncio`
+
+F401 [*] `time` imported but unused
+  --> tests\performance\test_concurrent_load.py:14:8
+   |
+13 | import asyncio
+14 | import time
+   |        ^^^^
+15 | from typing import Any
+   |
+help: Remove unused import: `time`
+
+F401 [*] `statistics` imported but unused
+ --> tests\performance\test_latency.py:8:8
+  |
+6 | from __future__ import annotations
+7 |
+8 | import statistics
+  |        ^^^^^^^^^^
+9 | from typing import Any
+  |
+help: Remove unused import: `statistics`
+
+F401 [*] `time` imported but unused
+ --> tests\performance\test_throughput.py:8:8
+  |
+6 | from __future__ import annotations
+7 |
+8 | import time
+  |        ^^^^
+9 | from typing import Any
+  |
+help: Remove unused import: `time`
+
+F401 [*] `pytest` imported but unused
+  --> tests\security\test_aes_gcm_encryption.py:12:8
+   |
+10 | import base64
+11 |
+12 | import pytest
+   |        ^^^^^^
+13 |
+14 | from src.tools.git_mcp import decrypt_credential, encrypt_credential
+   |
+help: Remove unused import: `pytest`
+
+F401 [*] `json` imported but unused
+  --> tests\security\test_prompt_injection.py:10:8
+   |
+ 8 | from __future__ import annotations
+ 9 |
+10 | import json
+   |        ^^^^
+11 | from pathlib import Path
+12 | from unittest.mock import MagicMock
+   |
+help: Remove unused import: `json`
+
+N806 Variable `LEGIT_FILES` in function should be lowercase
+   --> tests\security\test_prompt_injection.py:114:9
+    |
+112 |         # 合法 eval() 调用白名单 (Redis Lua 脚本 eval, 非用户输入)
+113 |         # redis_lock.py 使用 client.eval(UNLOCK_SCRIPT, ...) 执行 Redis 原子释放锁脚本
+114 |         LEGIT_FILES = {"redis_lock.py"}
+    |         ^^^^^^^^^^^
+115 |
+116 |         eval_files: list[str] = []
+    |
+
+F401 [*] `unittest.mock.patch` imported but unused
+  --> tests\smoke\test_health_endpoint.py:11:27
+   |
+ 9 | from __future__ import annotations
+10 |
+11 | from unittest.mock import patch
+   |                           ^^^^^
+12 |
+13 | import pytest
+   |
+help: Remove unused import: `unittest.mock.patch`
+
+I001 [*] Import block is un-sorted or un-formatted
+  --> tests\unit\test_aes_gcm.py:8:1
+   |
+ 6 |   - decrypt_credential('invalid', key) 抛异常 (实际实现返回 None, 降级)
+ 7 |   """
+ 8 | / from __future__ import annotations
+ 9 | |
+10 | | import base64
+11 | |
+12 | | import pytest
+13 | |
+14 | | from src.tools.git_mcp import (
+15 | |     _decode_credential_key,
+16 | |     decrypt_credential,
+17 | |     encrypt_credential,
+18 | | )
+   | |_^
+   |
+help: Organize imports
+
+F401 [*] `pytest` imported but unused
+  --> tests\unit\test_aes_gcm.py:12:8
+   |
+10 | import base64
+11 |
+12 | import pytest
+   |        ^^^^^^
+13 |
+14 | from src.tools.git_mcp import (
+   |
+help: Remove unused import: `pytest`
+
+F401 [*] `unittest.mock.AsyncMock` imported but unused
+  --> tests\unit\test_coordinator.py:15:27
+   |
+13 | import json
+14 | from typing import Any
+15 | from unittest.mock import AsyncMock, MagicMock
+   |                           ^^^^^^^^^
+16 |
+17 | import pytest
+   |
+help: Remove unused import: `unittest.mock.AsyncMock`
+
+F401 [*] `pytest` imported but unused
+  --> tests\unit\test_edges.py:9:8
+   |
+ 7 | from __future__ import annotations
+ 8 |
+ 9 | import pytest
+   |        ^^^^^^
+10 |
+11 | from src.graph.edges import route_after_d, route_after_e
+   |
+help: Remove unused import: `pytest`
+
+F401 [*] `os` imported but unused
+  --> tests\unit\test_git_mcp_adapter.py:12:8
+   |
+10 | from __future__ import annotations
+11 |
+12 | import os
+   |        ^^
+13 | from pathlib import Path
+14 | from unittest.mock import MagicMock, patch
+   |
+help: Remove unused import: `os`
+
+F401 [*] `unittest.mock.patch` imported but unused
+  --> tests\unit\test_git_mcp_adapter.py:14:38
+   |
+12 | import os
+13 | from pathlib import Path
+14 | from unittest.mock import MagicMock, patch
+   |                                      ^^^^^
+15 |
+16 | import pytest
+   |
+help: Remove unused import: `unittest.mock.patch`
+
+F401 [*] `pytest` imported but unused
+  --> tests\unit\test_state.py:9:8
+   |
+ 7 | from __future__ import annotations
+ 8 |
+ 9 | import pytest
+   |        ^^^^^^
+10 |
+11 | from src.graph.state import DocbotState, ReportTaskState
+   |
+help: Remove unused import: `pytest`
+
+F401 [*] `typing.TypedDict` imported but unused
+  --> tests\unit\test_state.py:19:28
+   |
+17 |     def test_docbot_state_is_typed_dict(self) -> None:
+18 |         """验证 DocbotState 是 TypedDict."""
+19 |         from typing import TypedDict
+   |                            ^^^^^^^^^
+20 |
+21 |         # TypedDict 在 Python 3.12+ 的 __orig_bases__ 含 _TypedDictMeta
+   |
+help: Remove unused import: `typing.TypedDict`
+
+Found 32 errors.
+[*] 26 fixable with the `--fix` option (1 hidden fix can be enabled with the `--unsafe-fixes` option).
+
+========== COVERAGE REPORT ==========
+
+........................................................................ [ 29%]
+........................................................................ [ 58%]
+...........................ssss..s...............................ssss... [ 87%]
+......ss.......ss.............
+ERROR: Coverage failure: total of 14 is less than fail-under=70
+                                                                         [100%]
+============================== warnings summary ===============================
+tests/unit/test_cache.py::TestWriteReadCache::test_write_then_read_round_trip
+  D:\Projects\Entrepreneurship\AIProjects\AgentInsightAgents\agentinsight-docbot\src\skills\docbot\cache.py:101: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await redis.setex(key, resolved_ttl, value)
+
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+  D:\Projects\Entrepreneurship\AIProjects\AgentInsightAgents\agentinsight-docbot\tests\unit\test_cache.py:183: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await fake_redis.setex(k, 3600, "value")
+
+tests/unit/test_cache.py::TestDeleteCache::test_delete_cache_existing_key
+  D:\Projects\Entrepreneurship\AIProjects\AgentInsightAgents\agentinsight-docbot\tests\unit\test_cache.py:232: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await fake_redis.setex(key, 3600, "value")
+
+tests/unit/test_init_sql.py::TestInitSqlContent::test_init_sql_not_empty
+  C:\Users\Yingn\AppData\Roaming\TRAE SOLO CN\ModularData\ai-agent\vm\tools\python\lib\site-packages\_pytest\fixtures.py:1313: PytestRemovedIn10Warning: Class-scoped fixture defined as instance method is deprecated.
+  Instance attributes set in this fixture will NOT be visible to test methods,
+  as each test gets a new instance while the fixture runs only once per class.
+  Use @classmethod decorator and set attributes on cls instead.
+  See https://docs.pytest.org/en/stable/deprecations.html#class-scoped-fixture-as-instance-method
+    fixturefunc = resolve_fixture_function(fixturedef, request)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=============================== tests coverage ================================
+______________ coverage: platform win32, python 3.10.11-final-0 _______________
+
+Name                                       Stmts   Miss  Cover   Missing
+------------------------------------------------------------------------
+src\__init__.py                                1      0   100%
+src\agents\docbot\__init__.py                  9      7    22%   21-28
+src\agents\docbot\content_filler.py          108    104     4%   21-319
+src\api\__init__.py                            0      0   100%
+src\api\ip_user_resolver.py                   66     66     0%   16-250
+src\api\middleware.py                        127     94    26%   55, 60, 65, 70, 75, 92, 95-119, 134-138, 152-194, 201-205, 215-231, 239-256, 272, 275-305, 315
+src\api\repo_routes.py                       339    333     2%   32-816
+src\api\routes.py                            337    337     0%   18-927
+src\api\session_routes.py                    141    141     0%   19-404
+src\common\__init__.py                         0      0   100%
+src\common\circuit_breaker.py                 36     36     0%   7-79
+src\common\exceptions.py                      30     30     0%   14-79
+src\common\http_client.py                     59     59     0%   15-159
+src\common\json_utils.py                      51     51     0%   11-98
+src\common\llm_key_resolver.py                10     10     0%   12-50
+src\common\redis_client.py                    37     26    30%   33-62, 68-73
+src\common\redis_lock.py                      19     19     0%   6-45
+src\config\__init__.py                         0      0   100%
+src\config\docbot\__init__.py                  3      0   100%
+src\config\docbot\outlines.py                 45      1    98%   54
+src\config\docbot\personas.py                  6      0   100%
+src\config\docbot\prompts.py                  24      2    92%   201-202
+src\config\settings.py                       175     11    94%   129, 276, 293, 333, 344-350
+src\graph\__init__.py                          5      0   100%
+src\graph\builder.py                          23     13    43%   42-60
+src\graph\edges.py                            20      0   100%
+src\graph\nodes.py                           113    101    11%   46-49, 67-159, 184-226, 242-320
+src\graph\report_builder.py                   28     17    39%   68-110
+src\graph\report_nodes.py                    193    178     8%   44-52, 73-116, 136-181, 208-269, 292-364, 380-426, 443-507
+src\graph\state.py                            42      0   100%
+src\llm\__init__.py                            2      0   100%
+src\llm\client.py                            292    285     2%   30-872
+src\llm\token_budget.py                       78     49    37%   30-33, 57-71, 107-112, 127-128, 155-176, 185-186, 200-205, 233-242, 247-248
+src\memory\__init__.py                         0      0   100%
+src\memory\checkpointer.py                    43     43     0%   19-150
+src\memory\db_initializer.py                 165    165     0%   13-335
+src\memory\report_store.py                    66     66     0%   9-289
+src\memory\session_store.py                  113    113     0%   14-612
+src\observability\__init__.py                  0      0   100%
+src\observability\tracing.py                 193    118    39%   37-44, 62, 65, 69, 73, 78-83, 99-106, 130, 147, 159, 171, 198, 224-247, 268-295, 312-334, 350-372, 389-412, 431-464, 483-484, 506-514, 532-544, 557-564, 577-584, 621-630
+src\rag\__init__.py                            0      0   100%
+src\rag\bm25_filter.py                        86     86     0%   25-271
+src\rag\embeddings.py                        210    210     0%   13-617
+src\rag\embeddings_filter.py                  79     79     0%   10-191
+src\rag\fastembed_client.py                  127    127     0%   20-272
+src\rag\qdrant_manager.py                    144    144     0%   17-553
+src\rag\retriever.py                         366    366     0%   18-860
+src\skills\__init__.py                         0      0   100%
+src\skills\docbot\__init__.py                  2      0   100%
+src\skills\docbot\cache.py                    84     15    82%   68, 71, 103-105, 133-136, 162, 165-166, 210-212
+src\skills\docbot\code_learner.py             66     66     0%   13-198
+src\skills\docbot\content_skill.py            10     10     0%   14-89
+src\skills\docbot\final_skill.py               7      7     0%   13-53
+src\skills\docbot\merge_skill.py               7      7     0%   15-55
+src\skills\docbot\outline_skill.py             7      7     0%   13-50
+src\skills\docbot\repo_loader.py             190    190     0%   14-564
+src\skills\docbot\review_skill.py              7      7     0%   13-62
+src\skills\researcher\__init__.py              0      0   100%
+src\skills\researcher\image_generator.py     159    159     0%   14-644
+src\skills\researcher\publisher.py           369    369     0%   6-754
+src\tools\__init__.py                          0      0   100%
+src\tools\git_mcp.py                         319    192    40%   116, 130-140, 144, 159-181, 194-195, 210, 227-307, 311-341, 345-379, 385-429, 440-484, 492-549, 557, 580-581, 608-609, 633-634, 659-661
+------------------------------------------------------------------------
+TOTAL                                       5238   4516    14%
+Coverage HTML written to dir htmlcov
+FAIL Required test coverage of 70.0% not reached. Total coverage: 13.78%
+N806 Variable `LEGIT_FILES` in function should be lowercase
+   --> tests\security\test_prompt_injection.py:113:9
+    |
+111 |         # 合法 eval() 调用白名单 (Redis Lua 脚本 eval, 非用户输入)
+112 |         # redis_lock.py 使用 client.eval(UNLOCK_SCRIPT, ...) 执行 Redis 原子释放锁脚本
+113 |         LEGIT_FILES = {"redis_lock.py"}
+    |         ^^^^^^^^^^^
+114 |
+115 |         eval_files: list[str] = []
+    |
+
+Found 26 errors (25 fixed, 1 remaining).
+All checks passed!
+
+========== FINAL FULL TEST RUN ==========
+
+ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss [ 15%]
+ssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss..ssssssss [ 30%]
+ssssssssssssssssssssss.................s...........................sssss [ 45%]
+s............ssss.........ss.......ss................................... [ 60%]
+........................................................................ [ 75%]
+........................................................................ [ 90%]
+.....ssss..s...............................                              [100%]
+============================== warnings summary ===============================
+tests/unit/test_cache.py::TestWriteReadCache::test_write_then_read_round_trip
+  D:\Projects\Entrepreneurship\AIProjects\AgentInsightAgents\agentinsight-docbot\src\skills\docbot\cache.py:101: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await redis.setex(key, resolved_ttl, value)
+
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+  D:\Projects\Entrepreneurship\AIProjects\AgentInsightAgents\agentinsight-docbot\tests\unit\test_cache.py:183: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await fake_redis.setex(k, 3600, "value")
+
+tests/unit/test_cache.py::TestDeleteCache::test_delete_cache_existing_key
+  D:\Projects\Entrepreneurship\AIProjects\AgentInsightAgents\agentinsight-docbot\tests\unit\test_cache.py:232: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await fake_redis.setex(key, 3600, "value")
+
+tests/unit/test_init_sql.py::TestInitSqlContent::test_init_sql_not_empty
+  C:\Users\Yingn\AppData\Roaming\TRAE SOLO CN\ModularData\ai-agent\vm\tools\python\lib\site-packages\_pytest\fixtures.py:1313: PytestRemovedIn10Warning: Class-scoped fixture defined as instance method is deprecated.
+  Instance attributes set in this fixture will NOT be visible to test methods,
+  as each test gets a new instance while the fixture runs only once per class.
+  Use @classmethod decorator and set attributes on cls instead.
+  See https://docs.pytest.org/en/stable/deprecations.html#class-scoped-fixture-as-instance-method
+    fixturefunc = resolve_fixture_function(fixturedef, request)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html

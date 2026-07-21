@@ -1,0 +1,169 @@
+# agentinsight-docbot 容器编排 (生产/联网模式)
+# depends_on service_healthy + 命名卷
+# 联网模式: 构建时从 PyPI/Docker Hub 下载依赖与镜像, 适用于开源社区
+# 生产联网模式 PostgreSQL 由本地 postgres 容器提供, 与 redis/qdrant/embeddings 同属 compose 编排
+# 业务表由 Agent 启动时执行 scripts/init.sql 创建 (幂等)
+# 依赖顺序: postgres → redis → qdrant → embeddings → agent-docbot
+# 所有环境变量统一从 .env 加载 (env_file + compose 插值), compose 文件不含硬编码
+# 镜像版本/TEI 服务端配置等 compose-only 参数已硬编码 (V4 简化: 从 .env 移除)
+#
+# 部署命令:
+#   docker compose -p agentinsight-docbot up -d --build
+# 缩容/重启:
+#   docker compose -p agentinsight-docbot restart agent-docbot
+# 清理 (保留数据卷):
+#   docker compose -p agentinsight-docbot down
+
+services:
+  postgres:
+    image: docker.io/postgres:17
+    restart: always
+    env_file:
+      - .env
+    # 配置 max_connections=200 适应双连接池架构 (asyncpg + psycopg)
+    command: >
+      postgres
+      -c max_connections=200
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:${POSTGRES_PORT:-5432}"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: docker.io/redis:8
+    restart: always
+    env_file:
+      - .env
+    command: >
+      sh -c "redis-server
+      $${REDIS_AUTH:+--requirepass \"$$REDIS_AUTH\"}
+      --maxmemory-policy noeviction"
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli $${REDIS_AUTH:+-a \"$$REDIS_AUTH\"} ping"]
+      interval: 3s
+      timeout: 10s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.18.0
+    restart: always
+    env_file:
+      - .env
+    environment:
+      QDRANT__LOG_LEVEL: INFO
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__SERVICE__HTTP_PORT: 6333
+      QDRANT__SERVICE__STATIC_API_KEY: ${QDRANT_API_KEY:-}
+    ports:
+      - "127.0.0.1:6333:6333"
+      - "127.0.0.1:6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/localhost/6333' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  embeddings:
+    # BGE 服务镜像 (bge-base-zh-v1.5, 768维), 联网模式从 Docker Hub 拉取
+    # 生产联网模式: 模型权重由 TEI 容器首次启动时从 HuggingFace 下载到命名卷 embeddings_models 缓存
+    # (生产联网模式允许联网下载; 不挂载本地 packages/models/, 与离线模式区分)
+    image: tei-embedding:cpu-1.9
+    restart: always
+    env_file:
+      - .env
+    environment:
+      # TEI 服务端配置 (compose-only 参数硬编码, 不暴露到 .env)
+      MODEL_ID: /data/bge-base-zh-v1.5
+      DTYPE: float32
+      MAX_BATCH_TOKENS: 16384
+      MAX_CLIENT_BATCH_SIZE: ${EMBEDDINGS_MAX_CLIENT_BATCH_SIZE:-4}
+      MAX_CONCURRENT_REQUESTS: ${EMBEDDINGS_TEI_MAX_CONCURRENT:-16}
+      AUTO_TRUNCATE: "true"
+      PORT: "8088"
+      API_KEY: ${EMBEDDINGS_API_KEY:-}
+    ports:
+      - "127.0.0.1:8088:8088"
+    volumes:
+      # 命名卷: TEI 用 /data 作为 HF cache (可写, 首次启动从 HuggingFace 下载模型并缓存)
+      - embeddings_models:/data
+    healthcheck:
+      # TEI 镜像 ENTRYPOINT=[text-embeddings-router], CMD 形式会被拦截
+      # 改用 CMD-SHELL + curl 绝对路径, 绕过 ENTRYPOINT 拦截
+      test: ["CMD-SHELL", "/usr/bin/curl -sf http://localhost:8088/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 180s
+
+  # docbot 主服务 (从 AIR 拷贝并改造, 不再兼容 researcher 配置)
+  # 端口 8068 (与 researcher 8066 区分, 支持同机并存)
+  # 系统 MCP 子进程 (mcp-server-git + mcp-server-filesystem) 由 server.py lifespan 启动
+  agent-docbot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agentinsight-docbot:latest
+    restart: always
+    env_file:
+      - .env
+    ports:
+      - "8068:8068"
+    volumes:
+      - session_data:/app/data/sessions
+      # 用户代码仓库克隆根目录 (settings.repo_clone_root=/tmp/repos)
+      # 命名卷持久化: 容器重启后仓库缓存仍可用, 避免重新克隆
+      - temp_repos:/tmp/repos
+      # FastEmbed ONNX 模型文件 (bge-small-zh-v1.5, 上下文压缩精排用)
+      # 生产联网模式: 模型运行时从 HuggingFace 自动下载
+      # 如需使用本地预下载模型: ./packages/models/bge-small-zh-v1.5-onnx:/app/models/bge-small-zh-v1.5-onnx:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      embeddings:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; r=httpx.get('http://localhost:8068/health', timeout=5.0); assert r.status_code==200"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  session_data:
+    driver: local
+  embeddings_models:
+    driver: local
+  # docbot 专属: 用户代码仓库克隆缓存 (持久化, 避免容器重启后重新克隆)
+  temp_repos:
+    driver: local
