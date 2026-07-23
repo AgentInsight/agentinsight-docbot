@@ -1,0 +1,210 @@
+report_type: defect
+name_zh: 系统缺陷文档
+name_en: Defect Report Document
+default_chapters: 14
+max_chapters: 20
+
+persona:
+  role: 质量工程师
+  mission: 记录系统缺陷全生命周期：发现、分级、复现、影响、修复、验证、根因、预防
+  target_audience:
+    - 开发工程师：缺陷详情、修复方案、RCA
+    - 测试工程师：复现步骤、验证结果、回归范围
+    - SRE：线上缺陷处置、影响分析、应急预案
+    - 产品：业务影响、优先级、用户确认
+
+chapters:
+  - idx: 1
+    title: 引言
+    purpose: 阐明编写目的、适用范围与参考文档
+    sections: []
+    key_points:
+      - 编写目的（开发/测试/SRE/产品）
+      - 适用范围（来源/类型）
+      - 术语（Bug/RCA/SLA/MTTR/DoD）
+      - 参考文档
+      - 版本历史
+
+  - idx: 2
+    title: 缺陷概述
+    purpose: 提供缺陷背景、范围与统计概览
+    sections: []
+    key_points:
+      - 缺陷背景（发布/紧急修复/专项治理）
+      - 缺陷范围（In-Scope/Out-of-Scope）
+      - 统计概览（总数/严重/已修复/MTTR）
+      - 来源分布（测试/生产/用户/扫描/评审）
+      - 类型分布（功能/性能/安全/体验/数据/兼容）
+
+  - idx: 3
+    title: 缺陷分级
+    purpose: 定义严重度与优先级分级标准
+    sections: []
+    key_points:
+      - 严重度 S0-S4（阻塞/严重/一般/轻微/提示）
+      - 优先级 P0-P4（4h/24h/1周/1月/待定）
+      - 严重度×优先级矩阵
+      - SLA 与升级路径（Lead→CTO）
+      - 分类标签（module/type/layer/source/root）
+
+  - idx: 4
+    title: 缺陷列表
+    purpose: 定义缺陷字段规范、清单与详情模板
+    sections: []
+    key_points:
+      - 字段规范（BUG-NNNN/标题/严重度/优先级）
+      - 缺陷清单（编号/标题/严重度/状态/负责人）
+      - 详情模板（基本信息/责任信息/关联信息）
+    example: |
+      ```markdown
+      ### BUG-NNNN <缺陷标题>
+      - **基本信息**：严重度 / 优先级 / 状态 / 类型 / 模块 / 层级
+      - **责任信息**：发现人 / 负责人 / 评审人 / 时间
+      - **关联信息**：需求 / 用例 / 缺陷 / PR / 监控
+      - **标签**：<label1> <label2>
+      ```
+
+  - idx: 5
+    title: 复现步骤
+    purpose: 标准化复现环境、数据与步骤
+    sections: []
+    key_points:
+      - 复现环境（Dev/Test/Staging/Prod）
+      - 复现数据（用户ID/参数/状态）
+      - 步骤模板（前置/操作/期望/实际/概率）
+      - 要素检查清单
+      - 不可复现处理（埋点/观察期/升级）
+
+  - idx: 6
+    title: 影响分析
+    purpose: 多维度评估缺陷影响
+    sections: []
+    key_points:
+      - 业务影响（功能/用户数/损失/SLA）
+      - 用户影响（用户群/降级/风险/投诉）
+      - 技术影响（模块/一致性/稳定性/性能）
+      - 合规与安全（CVE/CWE/审计）
+      - 影响量化与分级（高/中/低）
+
+  - idx: 7
+    title: 修复方案
+    purpose: 制定结构化修复方案
+    sections: []
+    key_points:
+      - 修复模板（策略/范围/工时/回滚）
+      - 修复策略（直接/规避/灰度/开关）
+      - 评审检查清单
+    example: |
+      ```markdown
+      ### BUG-NNNN 修复方案
+      - **修复策略**：直接修复 / 临时规避 / 灰度修复
+      - **修复范围**：<文件 / 模块 / 接口>
+      #### 代码变更
+      | 文件 | 变更类型 | 说明 |
+      |------|---------|------|
+      | <文件> | 修改/新增/删除 | <说明> |
+      #### 变更代码片段
+      ```<lang>
+      // 修改前 <旧代码>
+      // 修改后 <新代码>
+      ```
+      #### 回滚方案
+      - 触发条件：<列表>
+      - 回滚步骤：1. <步骤>
+      ```
+
+  - idx: 8
+    title: 验证结果
+    purpose: 定义验证策略与关闭确认
+    sections: []
+    key_points:
+      - 验证策略（单元/集成/回归/验收/性能）
+      - 验证结果记录（✅/⚠️）
+      - 回归测试范围
+      - 自动化验证（CI/覆盖率）
+      - 用户确认与验证结论
+      - 关闭确认矩阵
+
+  - idx: 9
+    title: 预防措施
+    purpose: 基于根因制定预防措施
+    sections: []
+    key_points:
+      - 预防模板（根因/类别/责任人/状态）
+      - 分类（流程/自动化/工具/培训/架构）
+      - 流程改进清单
+      - Checklist 沉淀
+      - 自动化防护（SonarQube/SAST/覆盖率≥80%）
+      - 培训与分享
+
+  - idx: 10
+    title: 缺陷生命周期管理
+    purpose: 定义状态机与责任人矩阵
+    sections: []
+    key_points:
+      - 状态机（New→Assigned→...→Closed）
+      - 状态定义与 SLA
+      - 状态流转规则
+      - 责任人矩阵
+      - 工具集成（Jira/GitHub/GitLab）
+
+  - idx: 11
+    title: 根本原因分析 (RCA)
+    purpose: 用 5 Whys / 鱼骨图 / FTA 深挖根因
+    sections: []
+    key_points:
+      - RCA 模板（5 Whys/鱼骨图/根因类别）
+      - 根因分类（代码/设计/流程/沟通/环境/第三方）
+      - 根因深度（L1-L4）
+      - RCA 评审
+
+  - idx: 12
+    title: 缺陷统计与度量
+    purpose: 定义关键指标与度量报表
+    sections: []
+    key_points:
+      - 关键指标（密度/逃逸率/MTTR/修复率）
+      - 缺陷分布（模块/类型/严重度/来源/根因）
+      - 趋势分析（30 天趋势）
+      - 度量报表（周报/月报/专项）
+      - 度量看板与改进
+
+  - idx: 13
+    title: 知识沉淀与复盘
+    purpose: 建立经验库与复盘机制
+    sections: []
+    key_points:
+      - 经验库（编号/主题/类别/链接）
+      - 复盘机制（S0/S1/重复缺陷触发）
+      - 复盘模板（时间线/根因/改进项）
+      - 培训与分享
+      - Checklist 演进
+      - 知识传承
+
+  - idx: 14
+    title: 附录
+    purpose: 提供模板速查与参考资料
+    sections: []
+    key_points:
+      - 模板速查（详情/复现/修复/RCA）
+      - 缺陷-用例-需求追踪矩阵
+      - 缺陷-根因-预防追踪矩阵
+      - 工具与集成（Jira/SonarQube/SENTRY）
+      - 分类参考（IEEE 1044/CWE/CVE）
+      - 参考资料
+
+writing_rules:
+  - 编号约定：BUG/RCA/PREV/REPRO/KB-NNN
+  - 关联 PR/Commit/用例/监控
+  - 严重度按技术影响，优先级按业务紧急度
+  - P0/P1 必须做 RCA 与复盘
+  - 状态流转遵循状态机
+  - 经验库持续沉淀
+
+output_format:
+  default_language: zh
+  default_format: markdown
+  chapter_numbering: "1, 1.1, 1.1.1"
+  diagrams: 状态机图/时间线图 (PlantUML 或代码块)
+  tables: Markdown 表格
+  to_word: pandoc 本文件 -o 输出.docx --toc --toc-depth=3

@@ -1,10 +1,10 @@
-"""单元测试: 8 种大纲文件存在性 + YAML frontmatter 解析.
+"""单元测试: 8 种 YAML 大纲文件存在性 + load_outline / load_outline_meta.
 
 测试目标:
-- 8 种大纲文件存在性 (docs/{ARCHITECTURE,HLD,PRD,TEST_CASE,OPTIMIZATION,PERF_ANALYSIS,DEFECT,API_DOC}_OUTLINE.md)
-- load_outline('architecture') 返回 list[dict] 含 idx/title/sections/key_points 字段
+- 8 种 YAML 大纲文件存在性 (src/config/docbot/outlines/{architecture,design,...}.yaml)
+- load_outline('architecture') 返回 list[dict] 含 idx/title/purpose/sections/key_points 字段
 - load_outline_meta('architecture') 返回 dict 含 report_type/name_zh/default_chapters/max_chapters
-- parse_markdown_outline 解析 YAML frontmatter + 章节列表 (含 sections/key_points 提取)
+- load_outline_full 返回完整大纲 (含 persona / writing_rules / output_format)
 """
 from __future__ import annotations
 
@@ -12,48 +12,53 @@ from pathlib import Path
 
 import pytest
 
-from src.config.docbot.outlines import load_outline, load_outline_meta, parse_markdown_outline
+from src.config.docbot.outlines import (
+    OutlineSpec,
+    load_outline,
+    load_outline_full,
+    load_outline_meta,
+)
 from src.config.docbot.personas import DOCBOT_REPORT_PERSONAS
 
-# 8 种大纲文件 (见 AGENTS.md 第 7 章 8 种文档默认大纲文件)
+# 8 种 YAML 大纲文件 (见 AGENTS.md 第 7 章 8 种文档默认大纲)
 _EXPECTED_OUTLINE_FILES = frozenset(
     {
-        "ARCHITECTURE_OUTLINE.md",
-        "HLD_OUTLINE.md",
-        "PRD_OUTLINE.md",
-        "TEST_CASE_OUTLINE.md",
-        "OPTIMIZATION_OUTLINE.md",
-        "PERF_ANALYSIS_OUTLINE.md",
-        "DEFECT_OUTLINE.md",
-        "API_DOC_OUTLINE.md",
+        "architecture.yaml",
+        "design.yaml",
+        "requirements.yaml",
+        "testcase.yaml",
+        "optimization.yaml",
+        "performance.yaml",
+        "defect.yaml",
+        "api_doc.yaml",
     }
 )
 
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
-_DOCS_DIR = _PROJECT_ROOT / "docs"
+_OUTLINES_DIR = _PROJECT_ROOT / "src" / "config" / "docbot" / "outlines"
 
 
 class TestOutlineFilesExistence:
-    """8 种大纲文件存在性测试."""
+    """8 种 YAML 大纲文件存在性测试."""
 
     @pytest.mark.parametrize("outline_file", sorted(_EXPECTED_OUTLINE_FILES))
     def test_outline_file_exists(self, outline_file: str) -> None:
-        """验证 8 种大纲文件存在."""
-        file_path = _DOCS_DIR / outline_file
+        """验证 8 种 YAML 大纲文件存在."""
+        file_path = _OUTLINES_DIR / outline_file
         assert file_path.exists(), f"大纲文件不存在: {file_path}"
 
-    def test_all_outline_files_in_personas_exist(self) -> None:
-        """验证 personas.outline_file 对应的所有大纲文件都存在."""
+    def test_all_outline_yaml_in_personas_exist(self) -> None:
+        """验证 personas.outline_yaml 对应的所有 YAML 文件都存在."""
         for report_type, persona in DOCBOT_REPORT_PERSONAS.items():
-            file_path = _DOCS_DIR / persona["outline_file"]
+            file_path = _OUTLINES_DIR / persona["outline_yaml"]
             assert file_path.exists(), (
-                f"report_type={report_type} 的 outline_file={persona['outline_file']} 不存在"
+                f"report_type={report_type} 的 outline_yaml={persona['outline_yaml']} 不存在"
             )
 
     @pytest.mark.parametrize("outline_file", sorted(_EXPECTED_OUTLINE_FILES))
     def test_outline_file_not_empty(self, outline_file: str) -> None:
-        """验证大纲文件非空."""
-        file_path = _DOCS_DIR / outline_file
+        """验证 YAML 大纲文件非空."""
+        file_path = _OUTLINES_DIR / outline_file
         content = file_path.read_text(encoding="utf-8")
         assert len(content) > 100, f"大纲文件 {outline_file} 内容过短 ({len(content)} 字符)"
 
@@ -83,17 +88,30 @@ class TestLoadOutline:
             load_outline("unknown")
 
     def test_load_outline_chapters_have_required_fields(self) -> None:
-        """每个章节含 idx / title / sections / key_points 字段."""
+        """每个章节含 idx / title / purpose / sections / key_points 字段 (YAML 格式独有 purpose)."""
         outline = load_outline("architecture")
         for ch in outline:
             assert "idx" in ch, f"章节缺 idx: {ch}"
             assert "title" in ch, f"章节缺 title: {ch}"
+            assert "purpose" in ch, f"章节缺 purpose (YAML 格式独有): {ch}"
             assert "sections" in ch, f"章节缺 sections: {ch}"
             assert "key_points" in ch, f"章节缺 key_points: {ch}"
             assert isinstance(ch["idx"], int)
             assert isinstance(ch["title"], str)
             assert isinstance(ch["sections"], list)
             assert isinstance(ch["key_points"], list)
+
+    @pytest.mark.parametrize(
+        "report_type",
+        sorted(DOCBOT_REPORT_PERSONAS.keys()),
+    )
+    def test_load_outline_chapter_idx_sequential(self, report_type: str) -> None:
+        """所有章节 idx 从 1 严格递增."""
+        outline = load_outline(report_type)
+        idx_list = [ch["idx"] for ch in outline]
+        assert idx_list == list(range(1, len(outline) + 1)), (
+            f"{report_type} idx 不连续: {idx_list}"
+        )
 
 
 class TestLoadOutlineMeta:
@@ -118,120 +136,63 @@ class TestLoadOutlineMeta:
         meta = load_outline_meta(report_type)
         assert meta["report_type"] == report_type
 
+    @pytest.mark.parametrize(
+        "report_type",
+        sorted(DOCBOT_REPORT_PERSONAS.keys()),
+    )
+    def test_load_outline_meta_max_ge_default(self, report_type: str) -> None:
+        """max_chapters 应不小于 default_chapters (schema 校验)."""
+        meta = load_outline_meta(report_type)
+        assert meta["max_chapters"] >= meta["default_chapters"], (
+            f"{report_type}: max_chapters ({meta['max_chapters']}) < default_chapters ({meta['default_chapters']})"
+        )
 
-class TestParseMarkdownOutline:
-    """parse_markdown_outline 函数测试 (返回完整 dict 含 meta + chapters)."""
 
-    def test_parse_with_frontmatter(self) -> None:
-        """解析含 YAML frontmatter 的大纲."""
-        markdown = """---
-report_type: test_type
-name_zh: 测试类型
-name_en: Test Type
-default_chapters: 5
-max_chapters: 10
----
+class TestLoadOutlineFull:
+    """load_outline_full 函数测试 (返回完整大纲含 persona / writing_rules / output_format)."""
 
-# 测试大纲
+    @pytest.mark.parametrize(
+        "report_type",
+        sorted(DOCBOT_REPORT_PERSONAS.keys()),
+    )
+    def test_load_outline_full_structure(self, report_type: str) -> None:
+        """load_outline_full 返回完整大纲结构."""
+        full = load_outline_full(report_type)
+        assert isinstance(full, dict)
+        # 元数据字段
+        assert full["report_type"] == report_type
+        assert "name_zh" in full
+        assert "name_en" in full
+        assert isinstance(full["default_chapters"], int)
+        assert isinstance(full["max_chapters"], int)
+        # persona 字段 (YAML 独有)
+        assert "persona" in full
+        assert isinstance(full["persona"], dict)
+        assert "role" in full["persona"]
+        assert "mission" in full["persona"]
+        assert "target_audience" in full["persona"]
+        assert isinstance(full["persona"]["target_audience"], list)
+        # chapters 字段
+        assert isinstance(full["chapters"], list)
+        assert len(full["chapters"]) > 0
+        # writing_rules 字段
+        assert "writing_rules" in full
+        assert isinstance(full["writing_rules"], list)
+        # output_format 字段
+        assert "output_format" in full
+        assert isinstance(full["output_format"], dict)
 
-## 第1章 概述
-内容1
 
-## 第2章 详情
-内容2
-"""
-        result = parse_markdown_outline(markdown, report_type="test_type")
-        assert result["report_type"] == "test_type"
-        assert result["name_zh"] == "测试类型"
-        assert result["name_en"] == "Test Type"
-        assert result["default_chapters"] == 5
-        assert result["max_chapters"] == 10
-        assert "raw_markdown" in result
-        assert isinstance(result["chapters"], list)
-        # 只匹配 ## 第N章, 不匹配 # 主标题
-        assert len(result["chapters"]) == 2
+class TestOutlineSpecSchema:
+    """OutlineSpec Pydantic schema 校验测试."""
 
-    def test_parse_without_frontmatter(self) -> None:
-        """解析不含 YAML frontmatter 的大纲 (应使用默认值)."""
-        markdown = """# 大纲标题
-
-## 第1章 概述
-内容1
-"""
-        result = parse_markdown_outline(markdown, report_type="custom")
-        assert result["report_type"] == "custom"
-        assert result["name_zh"] == ""  # 默认空字符串
-        assert result["default_chapters"] == 10  # 默认值
-        assert result["max_chapters"] == 20  # 默认值
-
-    def test_parse_invalid_yaml_falls_back_to_empty(self) -> None:
-        """YAML frontmatter 解析失败时, 应降级到空 dict."""
-        markdown = """---
-: invalid: yaml: syntax
----
-
-# 大纲
-## 第1章 概述
-"""
-        result = parse_markdown_outline(markdown, report_type="custom")
-        # YAML 解析失败时, frontmatter 为空 dict, 使用默认值
-        assert result["default_chapters"] == 10
-        assert result["max_chapters"] == 20
-
-    def test_parse_chapters_content(self) -> None:
-        """章节内容应正确截取 (# 主标题不作为章节)."""
-        markdown = """# 大纲
-
-## 第1章 概述
-章节1内容
-
-## 第2章 详情
-章节2内容
-"""
-        result = parse_markdown_outline(markdown, report_type="custom")
-        # 只匹配 ## 第N章, 不匹配 # 大纲 (主标题)
-        assert len(result["chapters"]) == 2
-        # 第 1 个章节 (第1章 概述) 应包含 "章节1内容"
-        assert "章节1内容" in result["chapters"][0]["content"]
-        # 第 2 个章节 (第2章 详情) 应包含 "章节2内容"
-        assert "章节2内容" in result["chapters"][1]["content"]
-
-    def test_parse_extracts_key_points(self) -> None:
-        """从 **要点**: 后的列表项提取 key_points."""
-        markdown = """# 大纲
-
-## 第1章 概述
-**目的**：阐明背景
-**要点**：
-- 业务背景与目标
-- 系统定位与核心价值
-- 利益相关方矩阵
-
-## 第2章 详情
-**要点**：
-- 详细设计
-- 接口规范
-"""
-        result = parse_markdown_outline(markdown, report_type="custom")
-        assert len(result["chapters"]) == 2
-        # 第 1 章应提取 3 个 key_points
-        assert len(result["chapters"][0]["key_points"]) == 3
-        assert "业务背景与目标" in result["chapters"][0]["key_points"]
-        # 第 2 章应提取 2 个 key_points
-        assert len(result["chapters"][1]["key_points"]) == 2
-        assert "详细设计" in result["chapters"][1]["key_points"]
-
-    def test_parse_chapters_have_sections_and_key_points_fields(self) -> None:
-        """每个章节含 sections / key_points 字段 (即使为空)."""
-        markdown = """# 大纲
-
-## 第1章 概述
-内容
-"""
-        result = parse_markdown_outline(markdown, report_type="custom")
-        assert len(result["chapters"]) == 1
-        ch = result["chapters"][0]
-        assert "sections" in ch
-        assert "key_points" in ch
-        assert isinstance(ch["sections"], list)
-        assert isinstance(ch["key_points"], list)
+    @pytest.mark.parametrize(
+        "report_type",
+        sorted(DOCBOT_REPORT_PERSONAS.keys()),
+    )
+    def test_outline_yaml_passes_pydantic_schema(self, report_type: str) -> None:
+        """每个 YAML 大纲文件通过 OutlineSpec schema 校验 (load_outline_full 内部已校验)."""
+        # load_outline_full 内部已通过 OutlineSpec.model_validate 校验,
+        # 若 YAML 不符合 schema 会抛 ValueError
+        full = load_outline_full(report_type)
+        assert full["report_type"] == report_type

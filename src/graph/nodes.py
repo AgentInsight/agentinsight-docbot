@@ -1,4 +1,4 @@
-"""docbot 顶层图节点函数 (4 个).
+"""docbot 顶层图节点函数 (5 个).
 
 约定 (见 docs/DESIGN_AGENT.md 第 3 章与 AGENTS.md 第 5 章):
 - 节点为纯函数: async def node(state, settings) -> dict
@@ -8,7 +8,7 @@
 - settings 通过 functools.partial 在 builder 中注入, 保持节点函数纯函数语义
 
 顶层图节点顺序:
-coordinator_a → spawn_b_tasks → final_reviewer_g → save_reports → END
+coordinator_a → spawn_b_tasks → final_reviewer_g → save_reports → cleanup_repo → END
 
 import 路径约定: 用绝对导入 (不是 from src.graph...).
 """
@@ -102,6 +102,7 @@ async def spawn_b_tasks_node(state: dict, settings: Any | None = None) -> dict:
                     "user_id": user_id,
                     "session_id": session_id,
                     "agent_id": agent_id,
+                    "_repo_config": state.get("_repo_config", {}),
                     "llm_session_id": "",
                     "code_learning_cache_key": "",
                     "outline_cache_key": "",
@@ -323,7 +324,51 @@ async def save_reports_node(state: dict, settings: Any | None = None) -> dict:
         return {"final_reports": saved}
 
 
+async def cleanup_repo_node(state: dict, settings: Any | None = None) -> dict:
+    """文档生成完成后删除克隆目录 (任务3要求: 按需下载, 完成后删除).
+
+    在 save_reports 之后执行, 清理 temp/repos/{user_id}/{repo_id}/ 目录,
+    避免克隆仓库在磁盘上长期堆积. 失败不阻断主流程.
+
+    Args:
+        state: 顶层 DocbotState, 含 user_id / repo_id
+        settings: Settings 实例 (未使用, 保留以保持节点函数签名一致)
+
+    Returns:
+        空 dict (不修改 state)
+    """
+    import asyncio
+    import shutil
+
+    from src.tools.git_mcp import get_git_mcp_adapter
+
+    user_id = state.get("user_id", "")
+    repo_id = state.get("repo_id", "")
+    if not user_id or not repo_id:
+        return {}
+
+    async with trace_chain(
+        name="docbot.cleanup_repo",
+        input={"repo_id": repo_id, "user_id": user_id},
+    ) as span:
+        try:
+            adapter = get_git_mcp_adapter()
+            repo_path = adapter._repo_path(user_id, repo_id)
+            if repo_path.exists():
+                await asyncio.to_thread(shutil.rmtree, repo_path, ignore_errors=True)
+                logger.info("已清理仓库克隆目录: %s", repo_path)
+                span.update(output={"cleaned": True, "repo_path": str(repo_path)})
+            else:
+                span.update(output={"cleaned": False, "reason": "not_exist"})
+        except Exception as e:  # noqa: BLE001
+            logger.warning("清理仓库克隆目录失败 (不阻断主流程): %s", e)
+            span.update(output={"cleaned": False, "error": str(e)})
+
+    return {}
+
+
 __all__ = [
+    "cleanup_repo_node",
     "coordinator_a_node",
     "final_reviewer_g_node",
     "save_reports_node",

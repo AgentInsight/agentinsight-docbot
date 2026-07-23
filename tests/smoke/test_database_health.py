@@ -29,6 +29,7 @@ EXPECTED_TABLES = [
     "daily_report_usage",
     "token_usage_logs",
     "chat_messages",
+    "mcp_configs",
 ]
 
 

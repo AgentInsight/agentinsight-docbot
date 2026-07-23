@@ -108,15 +108,6 @@ class TestEndpointNotExist:
         content = repo_path.read_text(encoding="utf-8")
         assert '"/v1/mcp/configs"' not in content
         assert "'/v1/mcp/configs'" not in content
-
-    def test_init_sql_does_not_create_mcp_configs_table(self) -> None:
-        """验证 init.sql 不创建 mcp_configs 表."""
-        project_root = Path(__file__).parent.parent.parent
-        sql_path = project_root / "scripts" / "init.sql"
-        if not sql_path.exists():
-            pytest.skip("init.sql 不存在")
-
-        content = sql_path.read_text(encoding="utf-8")
-        # 不应 CREATE TABLE mcp_configs
-        assert "CREATE TABLE IF NOT EXISTS mcp_configs" not in content
-        assert "CREATE TABLE mcp_configs" not in content
+        # 注: mcp_configs 表本身存在于 init.sql (供未来扩展, 预置系统 MCP 配置),
+        # 但 API 层不暴露 /v1/mcp/configs CRUD 端点 (AGENTS.md 规则 #20).
+        # 表存在性由 tests/unit/test_init_sql.py 正向校验.

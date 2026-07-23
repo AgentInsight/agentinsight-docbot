@@ -314,8 +314,8 @@ class Settings(BaseSettings):
     repo_clone_root: str = "/tmp/repos"
     # 允许的 Git 域名白名单（逗号分隔，空表示允许全部）
     allowed_git_domains: str = ""
-    # 文档默认大纲目录
-    docbot_outlines_dir: str = "docs"
+    # 文档默认大纲目录 (YAML 格式, 与代码同包发布)
+    docbot_outlines_dir: str = "src/config/docbot/outlines"
     # 6 步流水线缓存 TTL（秒，默认 24 小时）
     docbot_cache_ttl: int = 86400
     # 支持 2 种语言

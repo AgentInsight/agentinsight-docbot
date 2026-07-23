@@ -2,7 +2,7 @@
 
 测试目标 (见 AGENTS.md 第 13 章关键测试用例 1):
 - DOCBOT_REPORT_PERSONAS 含 8 种类型
-- 每种 persona 含 role_name / description / tone / target_audience / outline_file 字段
+- 每种 persona 含 role_name / description / tone / target_audience / outline_yaml 字段
 - get_persona('architecture') 返回正确字典
 - get_persona('unknown') 抛 ValueError
 """
@@ -26,9 +26,9 @@ _EXPECTED_REPORT_TYPES = frozenset(
     }
 )
 
-# 每个 persona 必须含的字段
+# 每个 persona 必须含的字段 (outline_yaml 指向 src/config/docbot/outlines/*.yaml)
 _REQUIRED_PERSONA_FIELDS = frozenset(
-    {"role_name", "description", "tone", "target_audience", "outline_file"}
+    {"role_name", "description", "tone", "target_audience", "outline_yaml"}
 )
 
 
@@ -50,16 +50,18 @@ class TestDocbotReportPersonas:
             assert persona[field], f"persona.{report_type}.{field} 不能为空字符串"
 
     @pytest.mark.parametrize("report_type", sorted(_EXPECTED_REPORT_TYPES))
-    def test_persona_outline_file_ends_with_md(self, report_type: str) -> None:
-        """验证 outline_file 字段以 .md 结尾."""
-        outline_file = DOCBOT_REPORT_PERSONAS[report_type]["outline_file"]
-        assert outline_file.endswith(".md"), f"{report_type}.outline_file 应以 .md 结尾"
+    def test_persona_outline_yaml_ends_with_yaml(self, report_type: str) -> None:
+        """验证 outline_yaml 字段以 .yaml 结尾."""
+        outline_yaml = DOCBOT_REPORT_PERSONAS[report_type]["outline_yaml"]
+        assert outline_yaml.endswith(".yaml"), (
+            f"{report_type}.outline_yaml 应以 .yaml 结尾, 实际: {outline_yaml}"
+        )
 
     @pytest.mark.parametrize("report_type", sorted(_EXPECTED_REPORT_TYPES))
-    def test_persona_outline_file_unique(self, report_type: str) -> None:
-        """验证 8 种 persona 的 outline_file 互不相同."""
-        files = [p["outline_file"] for p in DOCBOT_REPORT_PERSONAS.values()]
-        assert len(files) == len(set(files)), "outline_file 应唯一"
+    def test_persona_outline_yaml_unique(self, report_type: str) -> None:
+        """验证 8 种 persona 的 outline_yaml 互不相同."""
+        files = [p["outline_yaml"] for p in DOCBOT_REPORT_PERSONAS.values()]
+        assert len(files) == len(set(files)), "outline_yaml 应唯一"
 
 
 class TestGetPersona:
@@ -69,13 +71,13 @@ class TestGetPersona:
         """get_persona('architecture') 返回正确字典."""
         persona = get_persona("architecture")
         assert persona["role_name"] == "技术架构师"
-        assert persona["outline_file"] == "ARCHITECTURE_OUTLINE.md"
+        assert persona["outline_yaml"] == "architecture.yaml"
 
     def test_get_persona_api_doc(self) -> None:
         """get_persona('api_doc') 返回正确字典."""
         persona = get_persona("api_doc")
         assert persona["role_name"] == "API 文档工程师"
-        assert persona["outline_file"] == "API_DOC_OUTLINE.md"
+        assert persona["outline_yaml"] == "api_doc.yaml"
 
     @pytest.mark.parametrize("report_type", sorted(_EXPECTED_REPORT_TYPES))
     def test_get_persona_all_types(self, report_type: str) -> None:

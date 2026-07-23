@@ -5,19 +5,18 @@
 - mock_redis: 用 fakeredis 模拟 Redis 客户端
 - mock_llm_client: 返回固定响应的 LLM 客户端 mock
 - tmp_repos_dir: 临时仓库克隆目录 (自动清理)
-- event_loop: pytest-asyncio 事件循环
 - requires_external 标记: 默认跳过外部服务依赖的测试, --run-external 启用
 
 约定 (见 AGENTS.md 第 13 章):
 - 单元测试不应依赖外部服务 (Postgres/Qdrant/Redis/LLM/Git)
 - 用 fakeredis / unittest.mock 模拟外部依赖
 - pyproject.toml 已配 asyncio_mode = "auto", 异步测试用 async def
+- 不再自定义 event_loop fixture (pytest-asyncio >= 0.21 已弃用, 由框架自动管理)
 """
 from __future__ import annotations
 
 import asyncio
 import sys
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -240,16 +239,9 @@ def tmp_repos_dir(tmp_path: Path) -> Path:
     return repos_dir
 
 
-# ========== event_loop fixture (pytest-asyncio) ==========
-@pytest.fixture
-def event_loop() -> Iterator[asyncio.AbstractEventLoop]:
-    """提供 event_loop (pytest-asyncio 兼容)."""
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-
 # ========== 通用辅助 fixture ==========
+# 注: 不再自定义 event_loop fixture (pytest-asyncio >= 0.21 已弃用此模式)
+# pyproject.toml 已配 asyncio_mode = "auto", 由 pytest-asyncio 自动管理事件循环
 @pytest.fixture
 def sample_repo_config() -> dict[str, Any]:
     """提供样例 repo_config dict (用于 GitMCPAdapter 测试)."""

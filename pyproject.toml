@@ -148,6 +148,8 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# 显式设置 fixture loop scope 为 function, 消除 pytest-asyncio 未设置该选项的 DeprecationWarning
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-q --tb=short --ignore=tests/manual"

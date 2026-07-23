@@ -50,8 +50,8 @@ class TestSettingsDefaults:
         assert Settings.model_fields["docbot_cache_ttl"].default == 86400
 
     def test_docbot_outlines_dir_default(self) -> None:
-        """docbot_outlines_dir 默认 'docs'."""
-        assert Settings.model_fields["docbot_outlines_dir"].default == "docs"
+        """docbot_outlines_dir 默认 'src/config/docbot/outlines' (YAML 大纲目录, 与代码同包)."""
+        assert Settings.model_fields["docbot_outlines_dir"].default == "src/config/docbot/outlines"
 
     def test_git_credential_key_default_none(self) -> None:
         """git_credential_key 默认 None (需环境变量注入)."""

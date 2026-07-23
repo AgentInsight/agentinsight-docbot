@@ -483,12 +483,12 @@ async def test_repo_connection(repo_id: str) -> dict[str, Any]:
 
     repo_config = _load_repo_config(row)
     adapter = get_git_mcp_adapter()
-    success = await adapter.test_connection(repo_config)
+    result = await adapter.test_connection(repo_config)
 
     return {
         "repo_id": repo_id,
-        "success": success,
-        "message": "连接成功" if success else "连接失败 (检查 URL/认证/网络)",
+        "success": result["success"],
+        "message": "连接成功" if result["success"] else (result.get("error") or "连接失败 (检查 URL/认证/网络)"),
     }
 
 
@@ -758,6 +758,9 @@ def _chunk_doc(content: str) -> list[tuple[str, int]]:
 
     Markdown: 按 # / ## / ### 标题分块.
     """
+    # 空内容直接返回空列表 (避免产生仅含空字符串的单块)
+    if not content:
+        return []
     lines = content.split("\n")
     chunks: list[tuple[str, int]] = []
     current: list[str] = []

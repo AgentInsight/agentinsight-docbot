@@ -1,0 +1,195 @@
+report_type: architecture
+name_zh: 技术架构文档
+name_en: Technical Architecture Document
+default_chapters: 12
+max_chapters: 20
+
+persona:
+  role: 首席架构师
+  mission: 生成结构完整、可落地、符合工业标准的技术架构文档
+  target_audience:
+    - 决策者
+    - 开发工程师
+    - SRE/运维
+
+chapters:
+  - idx: 1
+    title: 系统概述
+    purpose: 阐明业务背景、系统定位、范围边界与利益相关方
+    sections: []
+    key_points:
+      - 业务背景与目标
+      - 系统定位与核心价值
+      - 利益相关方矩阵
+      - 范围边界 In-Scope/Out-of-Scope
+      - 读者画像与阅读路径
+      - 术语表
+    example: |
+      | 角色 | 关注点 | 影响力 | 参与方式 |
+      |------|-------|-------|---------|
+      | <角色> | <关注点> | 高/中/低 | <方式> |
+
+  - idx: 2
+    title: 架构原则与决策
+    purpose: 明确架构原则、设计准则与关键决策记录
+    sections: []
+    key_points:
+      - 架构原则(原则-理由-含义-反例)
+      - 设计准则(接口/一致性/失败处理)
+      - ADR 索引表
+      - 反模式清单
+    example: |
+      | # | 原则 | 理由 | 含义 | 反例 |
+      |---|------|------|------|------|
+      | 1 | API 优先 | <理由> | <含义> | <反例> |
+
+  - idx: 3
+    title: 整体架构
+    purpose: 描述架构风格、系统上下文与外部接口
+    sections: []
+    key_points:
+      - 架构风格选型(微服务/单体/事件驱动/Serverless)
+      - 系统上下文图 C4 Level 1
+      - 外部系统与接口清单
+      - 关键架构视图(逻辑/部署/数据)
+    example: |
+      ```plantuml
+      @startuml
+      !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+      Person(user, "<用户>")
+      System(sys, "<系统名>", "<职责>")
+      System_Ext(ext, "<外部系统>", "<协议>")
+      Rel(user, sys, "<动作>")
+      Rel(sys, ext, "<动作>", "<协议>")
+      @enduml
+      ```
+
+  - idx: 4
+    title: 核心组件
+    purpose: 拆解容器级组件、职责与交互
+    sections: []
+    key_points:
+      - 容器级架构图 C4 Level 2
+      - 组件清单(职责/技术栈/团队/依赖)
+      - 组件间交互协议与可靠性
+      - API 设计规范
+      - 核心流程时序图
+    example: |
+      ```plantuml
+      @startuml
+      !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+      System_Boundary(s, "<系统名>") {
+        Container(api, "API 服务", "<技术>", "<职责>")
+        ContainerDb(db, "数据库", "<技术>", "<数据>")
+      }
+      Rel(api, db, "读写")
+      @enduml
+      ```
+
+  - idx: 5
+    title: 数据架构与数据流
+    purpose: 定义数据分类、模型、存储选型与数据流
+    sections: []
+    key_points:
+      - 数据分类与生命周期
+      - 数据模型(概念/逻辑/物理)
+      - 存储选型矩阵
+      - 数据流图(同步+异步)
+      - 数据治理(所有权/血缘/质量)
+      - 数据安全与合规
+
+  - idx: 6
+    title: 部署架构
+    purpose: 描述部署拓扑、网络、容器与 IaC 策略
+    sections: []
+    key_points:
+      - 部署拓扑(多区域/多云/混合云)
+      - 网络架构(VPC/出入口/DNS/CDN)
+      - 计算与容器(K8s/Serverless)
+      - 基础设施即代码(Terraform/Pulumi)
+      - 环境策略(Dev/Test/Staging/Prod)
+
+  - idx: 7
+    title: 技术选型
+    purpose: 提供技术选型矩阵与决策依据
+    sections: []
+    key_points:
+      - 技术选型矩阵(分层/候选/评分/ADR)
+      - 选型原则(开源优先/团队熟悉度/总成本)
+      - 反模式清单
+
+  - idx: 8
+    title: 可扩展性与性能
+    purpose: 定义性能目标、容量规划与扩展模型
+    sections: []
+    key_points:
+      - 性能目标(P50/P95/P99/吞吐/并发)
+      - 容量规划(基线/增长率/扩容路径)
+      - 扩展模型(水平/垂直/缓存/分区)
+      - 关键瓶颈与优化方案
+      - 压测方案(k6/JMeter/Locust)
+      - 性能预算(前端/后端/数据库)
+
+  - idx: 9
+    title: 安全性与合规
+    purpose: 定义安全模型、IAM、威胁建模与合规框架
+    sections: []
+    key_points:
+      - 零信任安全模型五层
+      - IAM(OAuth2/OIDC/RBAC+ABAC/SSO/MFA)
+      - 威胁建模(STRIDE/风险等级/缓解)
+      - 密钥与机密管理(KMS/Vault/轮转)
+      - 网络与应用安全(WAF/DDoS/SAST/DAST)
+      - 合规框架(ISO 27001/等保/GDPR)
+      - 审计与取证
+
+  - idx: 10
+    title: 可靠性与可观测性
+    purpose: 定义 SLI/SLO/SLA、高可用拓扑与监控三支柱
+    sections: []
+    key_points:
+      - SLI/SLO/SLA 矩阵(含错误预算)
+      - 高可用拓扑(多活/主备/故障转移)
+      - 灾备策略(RTO/RPO/演练频率)
+      - 韧性模式(限流/熔断/降级/重试)
+      - 监控三支柱(Metrics/Logging/Tracing)
+      - 告警与值班(级别/路由/Runbook)
+      - 混沌工程与备份恢复
+
+  - idx: 11
+    title: 演进与治理
+    purpose: 建立架构治理、合规检查、债务登记与演进路径
+    sections: []
+    key_points:
+      - 架构治理(ARB/RFC/ADR 流程)
+      - 架构合规检查(Fitness Function)
+      - 技术债务登记
+      - 演进路径(Strangler Fig/数据迁移)
+      - 风险与未决事项
+      - 文档维护机制
+
+  - idx: 12
+    title: 附录
+    purpose: 提供 ADR 索引、图表索引与参考资料
+    sections: []
+    key_points:
+      - ADR 索引
+      - 图表索引
+      - 参考资料
+      - 变更历史
+
+writing_rules:
+  - 每章末附图示与 ADR 链接
+  - ADR 单独存放于 ADRs/ 目录
+  - 矩阵类信息优先用表格
+  - 架构/时序/组件图用 PlantUML
+  - 量化指标必须给出来源
+  - 安全合规内容需明确法规依据
+
+output_format:
+  default_language: zh
+  default_format: markdown
+  chapter_numbering: "1, 1.1, 1.1.1"
+  diagrams: PlantUML (C4 模型优先)
+  tables: Markdown 表格, 避免过宽
+  to_word: pandoc 本文件 -o 输出.docx --toc --toc-depth=3

@@ -93,10 +93,10 @@ async def c_code_learning_node(state: dict, settings: Any | None = None) -> dict
         logger.info("code_learning 缓存命中, 复用: %s", cache_key)
         return {"code_learning_cache_key": cache_key}
 
-    # 仓库配置从 user_git_repos 表查询 (这里通过 repo_id 反查)
-    # 节点函数不直接查 DB (避免循环依赖), 由 skills.docbot.code_learner 内部处理
-    # 实际部署时, 调用方应在 state 内注入 repo_config 或由 code_learner 内部 fetch
-    repo_config = state.get("_repo_config") or {"repo_url": "", "auth_type": "none"}
+    # 仓库配置由 coordinator_a 从 DB 加载并解密后注入 state (按需下载机制, 任务3)
+    repo_config = state.get("_repo_config")
+    if not repo_config or not repo_config.get("repo_url"):
+        return {"errors": ["missing_repo_config"]}
 
     learning_result = await learn_code(
         repo_config=repo_config,

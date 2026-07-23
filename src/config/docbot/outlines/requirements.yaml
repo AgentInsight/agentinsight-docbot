@@ -1,0 +1,175 @@
+report_type: requirements
+name_zh: 需求文档
+name_en: Product Requirements Document
+default_chapters: 10
+max_chapters: 20
+
+persona:
+  role: 产品经理
+  mission: 撰写结构化、可追踪、可验证的产品需求文档
+  target_audience:
+    - 产品/设计：关注用户画像、功能需求、优先级
+    - 研发：关注功能模板、验收标准、非功能约束
+    - 测试：关注验收标准、需求追踪矩阵
+    - 运营/法务：关注合规约束、风险依赖
+
+chapters:
+  - idx: 1
+    title: 引言
+    purpose: 阐明编写目的、产品背景、文档范围与参考文档
+    sections: []
+    key_points:
+      - 编写目的与目标读者
+      - 产品背景与业务痛点
+      - 文档范围 In-Scope / Out-of-Scope
+      - 术语与缩略语
+      - 参考文档（调研/访谈/竞品/法规）
+      - 版本历史
+
+  - idx: 2
+    title: 产品概述与用户分析
+    purpose: 定义产品定位、用户画像与用户旅程
+    sections: []
+    key_points:
+      - 产品定位、价值主张、北极星指标
+      - Persona 矩阵（角色/诉求/痛点）
+      - 用户旅程与业务流程 PlantUML 活动图
+      - 假设与依赖（§9 验证）
+      - 利益相关方矩阵
+    example: |
+      ```plantuml
+      @startuml
+      title <核心业务流程>
+      start
+      :<用户动作 1>;
+      :<系统响应 1>;
+      stop
+      @enduml
+      ```
+
+  - idx: 3
+    title: 功能需求
+    purpose: 以可追踪、可验证的方式描述所有功能需求
+    sections: []
+    key_points:
+      - 功能列表（编号/模块/优先级/状态）
+      - 功能模板（故事/主流程/AC/规则/NFR）
+      - 用户故事地图（旅程×优先级）
+      - 业务规则清单（关联 FR）
+      - 用例图 PlantUML
+    example: |
+      ```markdown
+      ### FR-NNN <功能名>
+      - 优先级：Must / Should / Could / Won't
+      #### 用户故事
+      作为 <角色>，我希望 <动作>，以便 <价值>
+      #### 验收标准
+      - [ ] AC1: <可测条件>
+      #### 业务规则
+      - BR-NNN: <规则>
+      ```
+
+  - idx: 4
+    title: 非功能需求
+    purpose: 以可量化、可验证的方式定义非功能需求
+    sections: []
+    key_points:
+      - 性能（P99 延迟、QPS、并发数）
+      - 可用性（可用率、RTO、RPO）
+      - 安全（OAuth2/RBAC/TLS 1.3/审计）
+      - 可扩展性（水平扩展、数据规模）
+      - 可维护性（部署时间、MTTR、可观测）
+      - 可访问性 WCAG 2.1 AA
+      - 兼容性（浏览器/设备/系统/网络）
+      - 本地化与国际化
+
+  - idx: 5
+    title: 接口需求
+    purpose: 定义用户接口、外部系统接口与硬件通信接口
+    sections: []
+    key_points:
+      - 用户接口 UI（页面/交互/AC）
+      - 外部系统接口（方向/协议/格式/SLA）
+      - 硬件接口（设备/类型/协议）
+      - 通信接口（协议/端口/加密）
+      - 内部模块接口（调用方/协议/频次）
+
+  - idx: 6
+    title: 数据需求
+    purpose: 定义数据模型、数据字典与数据流转
+    sections: []
+    key_points:
+      - 数据模型 ER 图
+      - 数据字典（类型/必填/取值/来源）
+      - 数据流转全链路（产生→销毁）
+      - 数据保留与销毁（依据法规）
+      - 数据质量（完整/准确/时效/一致）
+      - 数据埋点（事件/属性/用途）
+    example: |
+      ```plantuml
+      @startuml
+      entity User
+      entity Order
+      User ||--o{ Order
+      @enduml
+      ```
+
+  - idx: 7
+    title: 约束条件
+    purpose: 明确业务、技术、合规、资源约束
+    sections: []
+    key_points:
+      - 业务约束（来源/影响）
+      - 技术约束（技术栈/部署/集成）
+      - 合规约束（PIPL/GDPR/等保 2.0）
+      - 资源约束（预算/人力/上线节点）
+      - 标准与规范链接
+
+  - idx: 8
+    title: 优先级与路线图
+    purpose: 定义优先级方法、矩阵、Kano 模型与里程碑
+    sections: []
+    key_points:
+      - 优先级方法 MoSCoW（价值×成本×风险）
+      - 功能优先级矩阵
+      - Kano 模型（基本/期望/兴奋型）
+      - 里程碑 M1/M2/M3（日期/范围/责任人）
+      - 范围管理（RFC/CCB 变更流程）
+
+  - idx: 9
+    title: 风险与依赖
+    purpose: 登记风险、外部依赖与未决事项
+    sections: []
+    key_points:
+      - 风险登记（概率/影响/缓解/责任人）
+      - 外部依赖（提供方/预计就绪/状态）
+      - 未决事项 Open Questions
+      - 假设验证计划（方式/时间/责任人）
+
+  - idx: 10
+    title: 附录
+    purpose: 提供 Persona 完整卡、用例详述、术语表、追踪矩阵
+    sections: []
+    key_points:
+      - Persona 完整卡（角色/目标/痛点/场景）
+      - 用例详述模板（前置/主流程/异常）
+      - 术语表（与 §1.4 同步）
+      - 需求追踪矩阵 RTM
+      - 参考资料（IEEE 29148/《启示录》/JTBD）
+      - 评审记录与变更历史
+
+writing_rules:
+  - 使用 FR/NFR/IR/DR/C/BR-NNN 编号体系
+  - 确保 NFR 可量化、可验证
+  - 为每条 FR 给出验收标准 AC
+  - 采用"作为...我希望...以便..."三段式用户故事
+  - 为需求绑定 Persona 避免功能蔓延
+  - 维护需求追踪矩阵 RTM 端到端追踪
+
+output_format:
+  default_language: zh
+  default_format: markdown
+  chapter_numbering: "1, 1.1, 1.1.1"
+  diagrams: PlantUML (用例图/活动图/ER 图)
+  tables: Markdown 表格
+  to_word: pandoc 本文件 -o 输出.docx --toc --toc-depth=3

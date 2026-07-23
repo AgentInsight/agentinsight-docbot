@@ -1,0 +1,98 @@
+﻿.............FF..FF.sssss..................................ssssssssFFFFF [  6%]
+......................FF.............s...........sssssssssssssssssssssss [ 13%]
+sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss... [ 20%]
+...F................s............FF...........FFFFF.....F............... [ 27%]
+..............FFsssssssssssssssss...................................ssss [ 34%]
+ssssss..........sssssssssssss...........sssss.......................ssss [ 40%]
+ssssss...................................................sssss.......... [ 47%]
+........................................................................ [ 54%]
+...................................sss.................................. [ 61%]
+.......................................................ssss............. [ 68%]
+........................................................................ [ 75%]
+........................................................................ [ 81%]
+........................................................................ [ 88%]
+........................................................................ [ 95%]
+..............................................                           [100%]
+============================== warnings summary ===============================
+C:\Users\Yingn\AppData\Roaming\TRAE SOLO CN\ModularData\ai-agent\vm\tools\python\lib\site-packages\pypdf\_crypt_providers\_cryptography.py:32
+  C:\Users\Yingn\AppData\Roaming\TRAE SOLO CN\ModularData\ai-agent\vm\tools\python\lib\site-packages\pypdf\_crypt_providers\_cryptography.py:32: CryptographyDeprecationWarning: ARC4 has been moved to cryptography.hazmat.decrepit.ciphers.algorithms.ARC4 and will be removed from cryptography.hazmat.primitives.ciphers.algorithms in 48.0.0.
+    from cryptography.hazmat.primitives.ciphers.algorithms import AES, ARC4
+
+tests/api/test_repos.py::TestRepoSync::test_get_sync_status_returns_status
+  unittest\mock.py:2135: RuntimeWarning: coroutine '_run_sync' was never awaited
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/functional/test_repo_sync.py::TestRepoSync::test_sync_triggers_clone
+  contextlib.py:103: RuntimeWarning: coroutine '_run_sync' was never awaited
+  Enable tracemalloc to get traceback where the object was allocated.
+  See https://docs.pytest.org/en/stable/how-to/capture-warnings.html#resource-warnings for more info.
+
+tests/integration/test_session_persistence.py::TestRedisCacheKeyPassing::test_cache_key_write_and_read_roundtrip
+  D:\Projects\Entrepreneurship\AIProjects\agentinsight-agents\agentinsight-docbot\tests\integration\test_session_persistence.py:114: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await redis.setex(cache_key, 86400, cache_value)
+
+tests/integration/test_session_persistence.py::TestRedisCacheKeyPassing::test_cache_key_ttl_24h
+  D:\Projects\Entrepreneurship\AIProjects\agentinsight-agents\agentinsight-docbot\tests\integration\test_session_persistence.py:137: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await redis.setex(cache_key, 86400, "outline_data")
+
+tests/integration/test_session_persistence.py::TestRedisCacheKeyPassing::test_cache_key_namespace_isolation
+  D:\Projects\Entrepreneurship\AIProjects\agentinsight-agents\agentinsight-docbot\tests\integration\test_session_persistence.py:157: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await redis.setex(
+
+tests/security/test_init_sql_no_sensitive.py::TestInitSqlNoSensitive::test_no_hardcoded_password_literals
+tests/unit/test_init_sql.py::TestInitSqlContent::test_init_sql_not_empty
+  C:\Users\Yingn\AppData\Roaming\TRAE SOLO CN\ModularData\ai-agent\vm\tools\python\lib\site-packages\_pytest\fixtures.py:1313: PytestRemovedIn10Warning: Class-scoped fixture defined as instance method is deprecated.
+  Instance attributes set in this fixture will NOT be visible to test methods,
+  as each test gets a new instance while the fixture runs only once per class.
+  Use @classmethod decorator and set attributes on cls instead.
+  See https://docs.pytest.org/en/stable/deprecations.html#class-scoped-fixture-as-instance-method
+    fixturefunc = resolve_fixture_function(fixturedef, request)
+
+tests/unit/test_cache.py::TestWriteReadCache::test_write_then_read_round_trip
+  D:\Projects\Entrepreneurship\AIProjects\agentinsight-agents\agentinsight-docbot\src\skills\docbot\cache.py:101: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await redis.setex(key, resolved_ttl, value)
+
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+tests/unit/test_cache.py::TestClearSessionCache::test_clear_session_cache_deletes_matching_keys
+  D:\Projects\Entrepreneurship\AIProjects\AgentInsightAgents\agentinsight-docbot\tests\unit\test_cache.py:183: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await fake_redis.setex(k, 3600, "value")
+
+tests/unit/test_cache.py::TestDeleteCache::test_delete_cache_existing_key
+  D:\Projects\Entrepreneurship\AIProjects\AgentInsightAgents\agentinsight-docbot\tests\unit\test_cache.py:232: DeprecationWarning: Call to deprecated setex. (Use 'set' instead.) -- Deprecated since version 2.6.12.
+    await fake_redis.setex(key, 3600, "value")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/api/test_chat_completions.py::TestChatCompletionsValidation::test_invalid_report_types_returns_400 - assert 'report_types' in "language 仅支持 zh / en, 实际: <MagicMock name='mock.report_language.lower()' id='1275569972576'>"
+ +  where "language 仅支持 zh / en, 实际: <MagicMock name='mock.report_language.lower()' id='1275569972576'>" = HTTPException(status_code=400, detail="language 仅支持 zh / en, 实际: <MagicMock name='mock.report_language.lower()' id='1275569972576'>").detail
+ +    where HTTPException(status_code=400, detail="language 仅支持 zh / en, 实际: <MagicMock name='mock.report_language.lower()' id='1275569972576'>") = <ExceptionInfo HTTPException(status_code=400, detail="language 仅支持 zh / en, 实际: <MagicMock name='mock.report_language.lower()' id='1275569972576'>") tblen=2>.value
+FAILED tests/api/test_chat_completions.py::TestChatCompletionsValidation::test_invalid_report_format_returns_400 - assert 'report_format' in "language 仅支持 zh / en, 实际: <MagicMock name='mock.report_language.lower()' id='1275569917568'>"
+ +  where "language 仅支持 zh / en, 实际: <MagicMock name='mock.report_language.lower()' id='1275569917568'>" = HTTPException(status_code=400, detail="language 仅支持 zh / en, 实际: <MagicMock name='mock.report_language.lower()' id='1275569917568'>").detail
+ +    where HTTPException(status_code=400, detail="language 仅支持 zh / en, 实际: <MagicMock name='mock.report_language.lower()' id='1275569917568'>") = <ExceptionInfo HTTPException(status_code=400, detail="language 仅支持 zh / en, 实际: <MagicMock name='mock.report_language.lower()' id='1275569917568'>") tblen=2>.value
+FAILED tests/api/test_chat_completions.py::TestChatCompletionsValidation::test_default_report_types_when_missing - TypeError: Object of type MagicMock is not JSON serializable
+FAILED tests/api/test_chat_completions.py::TestChatCompletionsValidation::test_field_priority_explicit_over_instruction - TypeError: Object of type MagicMock is not JSON serializable
+FAILED tests/api/test_report_download.py::TestReportDownloadAuth::test_download_nonexistent_report_returns_404 - ModuleNotFoundError: No module named 'aiofiles'
+FAILED tests/api/test_report_download.py::TestReportDownloadAuth::test_download_cross_user_returns_403 - ModuleNotFoundError: No module named 'aiofiles'
+FAILED tests/api/test_report_download.py::TestReportDownloadAuth::test_download_invalid_format_returns_400 - ModuleNotFoundError: No module named 'aiofiles'
+FAILED tests/api/test_report_download.py::TestReportDownloadFormats::test_download_markdown_format - ModuleNotFoundError: No module named 'aiofiles'
+FAILED tests/api/test_report_download.py::TestReportDownloadFormats::test_download_json_format - ModuleNotFoundError: No module named 'aiofiles'
+FAILED tests/api/test_repos.py::TestRepoConnectionTest::test_test_connection_success - TypeError: 'bool' object is not subscriptable
+FAILED tests/api/test_repos.py::TestRepoConnectionTest::test_test_connection_failure - TypeError: 'bool' object is not subscriptable
+FAILED tests/exploratory/test_input_validation_edge.py::TestReportTypesEdgeCases::test_too_many_report_types_rejected - assert False
+ +  where False = any(<generator object TestReportTypesEdgeCases.test_too_many_report_types_rejected.<locals>.<genexpr> at 0x00000128FF22B840>)
+FAILED tests/functional/test_docbot_graph_flow.py::TestGraphBuilder::test_build_docbot_graph_returns_compiled_graph - TypeError: Invalid checkpointer provided. Expected an instance of `BaseCheckpointSaver`, `True`, `False`, or `None`. Received MagicMock. Pass a proper saver (e.g., InMemorySaver, AsyncPostgresSaver).
+FAILED tests/functional/test_docbot_graph_flow.py::TestGraphBuilder::test_build_docbot_graph_node_order - TypeError: Invalid checkpointer provided. Expected an instance of `BaseCheckpointSaver`, `True`, `False`, or `None`. Received MagicMock. Pass a proper saver (e.g., InMemorySaver, AsyncPostgresSaver).
+FAILED tests/functional/test_multi_format_output.py::TestMultiFormatOutput::test_download_endpoint_content_type[markdown-text/markdown] - ModuleNotFoundError: No module named 'aiofiles'
+FAILED tests/functional/test_multi_format_output.py::TestMultiFormatOutput::test_download_endpoint_content_type[html-text/html] - ModuleNotFoundError: No module named 'aiofiles'
+FAILED tests/functional/test_multi_format_output.py::TestMultiFormatOutput::test_download_endpoint_content_type[pdf-application/pdf] - ModuleNotFoundError: No module named 'aiofiles'
+FAILED tests/functional/test_multi_format_output.py::TestMultiFormatOutput::test_download_endpoint_content_type[docx-application/vnd.openxmlformats-officedocument.wordprocessingml.document] - ModuleNotFoundError: No module named 'aiofiles'
+FAILED tests/functional/test_multi_format_output.py::TestMultiFormatOutput::test_download_endpoint_content_type[json-application/json] - ModuleNotFoundError: No module named 'aiofiles'
+FAILED tests/functional/test_repo_analysis.py::TestRepoFileChunking::test_chunk_doc_empty_content - AssertionError: assert 1 == 0
+ +  where 1 = len([('', 0)])
+FAILED tests/functional/test_repo_analysis.py::TestRepoSyncStatusUpdate::test_get_sync_status_returns_status - socket.gaierror: [Errno 11001] getaddrinfo failed
+FAILED tests/functional/test_repo_analysis.py::TestRepoSyncStatusUpdate::test_get_sync_status_404_when_not_found - socket.gaierror: [Errno 11001] getaddrinfo failed

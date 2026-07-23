@@ -40,6 +40,10 @@ class DocbotState(TypedDict):
     report_format: str  # 'markdown' | 'html' | 'pdf' | 'docx' | 'json'
     language: str  # 'zh' | 'en'
 
+    # 仓库配置 (coordinator_a 从 DB 加载并解密后注入; 私有字段, 不应被 Checkpointer 持久化)
+    # 含 repo_url / default_branch / clone_depth / auth_type / token / username / password / ssh_key / ssh_passphrase
+    _repo_config: dict
+
     # 派发结果 (spawn_b_tasks 写入; operator.add 累积各 B 子图产物)
     # 每项: {report_type, report_id, final_cache_key, title, summary, image_svg, download_urls}
     report_tasks: Annotated[list[dict], operator.add]
@@ -71,6 +75,9 @@ class ReportTaskState(TypedDict):
     user_id: str
     session_id: str
     agent_id: str
+
+    # 仓库配置 (顶层 spawn_b_tasks 透传; 私有字段, 不应被 Checkpointer 持久化)
+    _repo_config: dict
 
     # LLM 会话 (任务一 b_init 创建, 贯穿后续所有 LLM 调用)
     llm_session_id: str

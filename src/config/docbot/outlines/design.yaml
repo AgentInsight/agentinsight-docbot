@@ -1,0 +1,236 @@
+report_type: design
+name_zh: 概要设计文档
+name_en: High-Level Design Document
+default_chapters: 13
+max_chapters: 20
+
+persona:
+  role: 首席设计师
+  mission: 撰写系统概要设计文档,明确模块划分、接口契约、数据模型与核心流程
+  target_audience:
+    - 开发工程师:模块划分、接口契约、数据模型
+    - 测试工程师:接口规范、错误码、测试策略
+    - 架构师:设计目标、关键决策、整体架构
+
+chapters:
+  - idx: 1
+    title: 引言
+    purpose: 阐明编写目的、项目背景、系统范围与参考文档
+    sections: []
+    key_points:
+      - 编写目的与详细设计边界
+      - 项目背景与触发因素
+      - 系统范围 In/Out-of-Scope
+      - 术语与缩略语
+      - 参考文档 PRD/架构文档
+      - 版本历史
+
+  - idx: 2
+    title: 系统总体设计
+    purpose: 定义设计目标、总体架构与技术栈
+    sections: []
+    key_points:
+      - 设计目标 3-5 条核心
+      - 总体架构图含分层与依赖
+      - 技术栈选型与版本理由
+      - 设计模式与编码约定
+      - 关键设计决策与理由
+    example: |
+      ```plantuml
+      @startuml
+      !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+      Person(user, "<用户>")
+      System(sys, "<系统名>", "<职责>")
+      System_Ext(ext, "<外部系统>", "<协议>")
+      Rel(user, sys, "<动作>")
+      Rel(sys, ext, "<动作>", "<协议>")
+      @enduml
+      ```
+
+  - idx: 3
+    title: 模块划分
+    purpose: 拆分模块、绘制依赖图、定义模块职责与通信
+    sections: []
+    key_points:
+      - 模块清单含职责与依赖
+      - 模块依赖图 PlantUML 无环
+      - 模块职责输入/处理/输出
+      - 模块间通信协议与同步性
+    example: |
+      ```plantuml
+      @startuml
+      component [模块 A]
+      component [模块 B]
+      [模块 A] --> [模块 B]
+      @enduml
+      ```
+
+  - idx: 4
+    title: 接口设计
+    purpose: 定义接口分类、规范、清单与契约
+    sections: []
+    key_points:
+      - 接口分类内/外/系统
+      - 接口规范协议与鉴权
+      - 接口清单含方法路径参数
+      - 接口契约 OpenAPI/Protobuf
+      - 错误码体系含 HTTP 状态
+    example: |
+      ```yaml
+      openapi: 3.0.0
+      paths:
+        /v1/orders:
+          post:
+            summary: 创建订单
+      ```
+
+  - idx: 5
+    title: 数据模型
+    purpose: 定义概念模型、逻辑模型、数据字典与存储选型
+    sections: []
+    key_points:
+      - 概念模型 ER 图
+      - 逻辑模型含主外键
+      - 数据字典表/字段/类型
+      - 存储选型与理由
+      - 数据流转链路
+    example: |
+      ```plantuml
+      @startuml
+      entity User
+      entity Order
+      User ||--o{ Order
+      @enduml
+      ```
+
+  - idx: 6
+    title: 核心流程
+    purpose: 用图表化描述用例、时序、状态与活动
+    sections: []
+    key_points:
+      - 用例清单含参与者
+      - 时序图覆盖核心用例
+      - 状态图核心对象流转
+      - 活动图复杂业务流程
+    example: |
+      ```plantuml
+      @startuml
+      actor User
+      participant "前端" as FE
+      participant "API" as API
+      participant "DB" as DB
+      User -> FE: 操作
+      FE -> API: 请求
+      API -> DB: 查询
+      DB --> API: 返回
+      API --> FE: 响应
+      @enduml
+      ```
+
+  - idx: 7
+    title: 异常处理与日志规范
+    purpose: 定义异常分级、处理策略、错误码体系与日志规范
+    sections: []
+    key_points:
+      - 异常分级 P0/P1/P2
+      - 异常策略重试/熔断/降级/限流
+      - 错误码按模块分段
+      - 日志规范结构化 JSON
+      - 告警规则触发条件
+
+  - idx: 8
+    title: 性能设计
+    purpose: 定义性能指标、容量规划与优化策略
+    sections: []
+    key_points:
+      - 性能指标 P50/P95/P99
+      - 容量规划与扩容路径
+      - 优化策略缓存/队列/索引
+      - 瓶颈分析与优化
+      - 压测方案 k6/JMeter/Locust
+
+  - idx: 9
+    title: 部署设计
+    purpose: 定义部署架构、环境策略、流水线与配置管理
+    sections: []
+    key_points:
+      - 部署架构拓扑图
+      - 环境策略 Dev/Test/Staging/Prod
+      - 部署流水线蓝绿金丝雀
+      - 配置管理与密钥管理
+      - 运维监控与告警
+    example: |
+      ```plantuml
+      @startuml
+      node "Region A" {
+        node "AZ-1" {
+          [API 服务 1]
+        }
+        node "AZ-2" {
+          [API 服务 2]
+        }
+      }
+      database "主库" as DB
+      [API 服务 1] --> DB
+      @enduml
+      ```
+
+  - idx: 10
+    title: 安全设计
+    purpose: 定义安全模型、IAM、数据安全与威胁建模
+    sections: []
+    key_points:
+      - 安全模型零信任/多层防御
+      - IAM OAuth2/JWT/RBAC
+      - 数据安全加密与脱敏
+      - 威胁建模 STRIDE
+      - 合规要求个保法/GDPR
+      - 审计日志不可篡改
+
+  - idx: 11
+    title: 用户界面设计(如适用)
+    purpose: 定义信息架构、关键页面与交互流程
+    sections: []
+    key_points:
+      - 信息架构与导航结构
+      - 关键页面与组件
+      - 交互流程用户旅程
+      - 设计规范与响应式断点
+      - 无前端标注不适用
+
+  - idx: 12
+    title: 测试策略
+    purpose: 定义测试分层、可测试性设计与测试数据
+    sections: []
+    key_points:
+      - 测试分层单元/集成/E2E
+      - 可测试性 DI/Mock
+      - 测试数据 Faker/工厂
+      - 测试环境 CI 集成
+
+  - idx: 13
+    title: 附录
+    purpose: 提供术语表、图表索引、参考资料与变更历史
+    sections: []
+    key_points:
+      - 术语表与 §1.4 同步
+      - 图表索引
+      - 参考资料经典书目
+      - 变更历史
+      - 评审记录
+
+writing_rules:
+  - 模块依赖图必须无环
+  - 接口契约优先用 OpenAPI/Protobuf 描述
+  - 数据模型 ER 图优先用 PlantUML
+  - 时序图覆盖每个核心用例
+  - 错误码按模块分段,编号不可重复
+  - 设计决策必须有理由并与 ADR 关联
+
+output_format:
+  default_language: zh
+  default_format: markdown
+  chapter_numbering: "1, 1.1, 1.1.1"
+  diagrams: PlantUML (C4/时序图/ER 图)
+  tables: Markdown 表格
+  to_word: pandoc 本文件 -o 输出.docx --toc --toc-depth=3

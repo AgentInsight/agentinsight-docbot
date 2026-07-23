@@ -2,7 +2,7 @@
 -- 单库 agents, 业务表含 agent_id+user_id 双列复合索引
 -- LangGraph PostgresSaver 表由官方 SDK 管理 (thread_id 已含会话隔离)
 --
--- 本文件为所有智能体 (researcher/docbot/asksql) 共享的业务表 DDL 真源 (Source of Truth)
+-- 本文件为所有智能体 (researcher/docbot) 共享的业务表 DDL 真源 (Source of Truth)
 -- 部署机制:
 --   1. docker-compose*.yml 将本文件挂载到 postgres 容器 /docker-entrypoint-initdb.d/init.sql
 --   2. postgres 容器首次启动时自动执行 (仅首次, 后续靠 DDL 幂等性保证)
@@ -16,7 +16,7 @@
 -- 2. ALTER TABLE 保留作为旧表兜底 (CREATE TABLE IF NOT EXISTS 对已存在的表是 no-op, 不会添加新列)
 -- 3. 所有 DDL 使用 IF NOT EXISTS / IF EXISTS / CREATE OR REPLACE 保证幂等 (重复执行不出错)
 -- 4. 唯一索引创建前清理重复数据 (防止历史脏数据导致索引创建失败)
--- 5. agent_id 列允许各 Agent 通过相同 schema 隔离数据 (researcher/docbot/asksql 不再各自维护独立 DDL)
+-- 5. agent_id 列允许各 Agent 通过相同 schema 隔离数据 (researcher/docbot 不再各自维护独立 DDL)
 
 -- 启用扩展
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -314,6 +314,57 @@ CREATE INDEX IF NOT EXISTS idx_daily_report_usage_agent_user
 CREATE OR REPLACE TRIGGER trg_daily_report_usage_updated_at
     BEFORE UPDATE ON daily_report_usage
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ========== 业务表: MCP 配置 (researcher 专属, 系统/用户 MCP 配置) ==========
+-- 存储 MCP (Model Context Protocol) 服务配置, 支持三种传输模式:
+--   stdio (本地模式): command 必填, 通过 stdin/stdout 与本地进程通信
+--   sse (远程模式): server_url 必填, 通过 SSE 连接远程 HTTP 服务器
+--   streamable_http (远程模式): server_url 必填, 通过 HTTP 流连接远程服务器
+-- 数据隔离:
+--   系统 MCP: agent_id IS NULL AND is_system = TRUE (全局共享, 用户可查看/克隆但不可编辑/删除)
+--   用户 MCP: agent_id = $1 AND user_id = $2 AND is_system = FALSE (用户私有)
+CREATE TABLE IF NOT EXISTS mcp_configs (
+    id BIGSERIAL PRIMARY KEY,
+    agent_id VARCHAR(64),                     -- NULL = 系统 MCP (全局共享); 非 NULL = 用户 MCP
+    user_id VARCHAR(64),                      -- 用户 MCP 时必填 (系统 MCP 为 NULL)
+    name VARCHAR(64) NOT NULL,                -- 配置名称
+    server_url TEXT,                          -- MCP Server URL (stdio 模式可空, sse/streamable_http 必填)
+    transport_type VARCHAR(32) NOT NULL,      -- stdio / sse / streamable_http
+    command VARCHAR(256),                     -- 启动命令 (stdio 模式必填, 如 npx/uvx/python)
+    args JSONB,                               -- 命令参数 (list[str], stdio 模式)
+    env_vars JSONB,                           -- 环境变量 (dict[str, str], stdio 模式, 含 Key 等)
+    enabled BOOLEAN NOT NULL DEFAULT FALSE,   -- 是否启用 (新增/更新时测试失败自动设为 FALSE)
+    is_system BOOLEAN NOT NULL DEFAULT FALSE, -- 是否系统公用 MCP (用户不可编辑/删除)
+    description TEXT,                         -- 描述
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- 复合索引: 用户 MCP 查询 (agent_id + user_id + is_system = FALSE)
+CREATE INDEX IF NOT EXISTS idx_mcp_configs_agent_user ON mcp_configs(agent_id, user_id, is_system);
+-- 索引: 系统 MCP 查询 (agent_id IS NULL AND is_system = TRUE)
+CREATE INDEX IF NOT EXISTS idx_mcp_configs_system ON mcp_configs(is_system) WHERE is_system = TRUE;
+-- 唯一索引: 同一用户下 MCP 配置名称不可重复 (系统 MCP 不受限)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_configs_unique_name
+    ON mcp_configs(COALESCE(agent_id, ''), COALESCE(user_id, ''), name) WHERE is_system = FALSE;
+-- 触发器: 自动维护 updated_at
+CREATE OR REPLACE TRIGGER trg_mcp_configs_updated_at
+    BEFORE UPDATE ON mcp_configs
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- 预置系统 MCP 配置 (agent_id IS NULL, is_system = TRUE)
+-- 用户可通过 POST /v1/mcp/system/{config_id}/clone 克隆到自己的列表
+-- 需 Key 的 MCP enabled=FALSE, 由用户填 Key 后测试启用
+INSERT INTO mcp_configs (agent_id, user_id, name, server_url, transport_type, command, args, env_vars, enabled, is_system, description)
+SELECT NULL, NULL, 'fetch', NULL, 'stdio', 'uvx', '["mcp-server-fetch"]'::jsonb, NULL, FALSE, TRUE, 'MCP Fetch - 网页抓取工具 (无需 Key)'
+WHERE NOT EXISTS (SELECT 1 FROM mcp_configs WHERE name = 'fetch' AND is_system = TRUE);
+
+INSERT INTO mcp_configs (agent_id, user_id, name, server_url, transport_type, command, args, env_vars, enabled, is_system, description)
+SELECT NULL, NULL, 'filesystem', NULL, 'stdio', 'npx', '["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]'::jsonb, NULL, FALSE, TRUE, 'MCP Filesystem - 文件系统工具 (需调整路径)'
+WHERE NOT EXISTS (SELECT 1 FROM mcp_configs WHERE name = 'filesystem' AND is_system = TRUE);
+
+INSERT INTO mcp_configs (agent_id, user_id, name, server_url, transport_type, command, args, env_vars, enabled, is_system, description)
+SELECT NULL, NULL, 'git', NULL, 'stdio', 'uvx', '["mcp-server-git", "--repository", "/tmp/repo"]'::jsonb, NULL, FALSE, TRUE, 'MCP Git - Git 仓库操作工具 (需调整路径)'
+WHERE NOT EXISTS (SELECT 1 FROM mcp_configs WHERE name = 'git' AND is_system = TRUE);
 
 -- ========== 初始化完成 ==========
 -- 注: 此处不再使用 'agentinsight-docbot' 字面量, agent_id 由各 Agent 在运行时动态写入

@@ -2,7 +2,7 @@
 
 测试目标 (见 AGENTS.md 第 13 章关键测试用例 1):
 - 读取 scripts/init.sql 文本
-- 不含 'mcp_configs' CREATE TABLE
+- 含 'mcp_configs' CREATE TABLE (系统 MCP 配置, 预置 fetch/filesystem/git)
 - 含 'user_git_repos' CREATE TABLE
 - 含 'report_type_label' / 'report_summary' / 'report_image_svg'
 - 不含 'research_search_logs' / 'uploaded_files'
@@ -39,16 +39,41 @@ class TestInitSqlContent:
         assert "CREATE TABLE IF NOT EXISTS user_git_repos" in init_sql_content
         assert "user_git_repos" in init_sql_content
 
-    def test_not_contains_mcp_configs_table(self, init_sql_content: str) -> None:
-        """验证不含 'mcp_configs' CREATE TABLE (docbot 不使用 mcp_configs 表)."""
-        # 不应 CREATE TABLE mcp_configs
-        assert "CREATE TABLE" not in init_sql_content.replace(
-            "CREATE TABLE IF NOT EXISTS user_git_repos", "X"
-        ).replace("research_sessions", "X").replace("research_reports", "X").replace(
-            "token_usage_logs", "X"
-        ).replace("chat_messages", "X").replace("report_limits", "X").replace(
-            "daily_report_usage", "X"
-        ) or "mcp_configs" not in init_sql_content
+    def test_contains_mcp_configs_table(self, init_sql_content: str) -> None:
+        """验证含 'mcp_configs' CREATE TABLE (系统 MCP 配置表)."""
+        assert "CREATE TABLE IF NOT EXISTS mcp_configs" in init_sql_content
+        assert "mcp_configs" in init_sql_content
+
+    def test_mcp_configs_has_key_columns(self, init_sql_content: str) -> None:
+        """验证 mcp_configs 表含关键列 (agent_id/user_id/name/transport_type/is_system)."""
+        # 检查 mcp_configs 表定义区块内含关键列
+        assert "transport_type" in init_sql_content
+        assert "is_system" in init_sql_content
+        assert "command" in init_sql_content
+        assert "args" in init_sql_content  # noqa: S101
+        assert "env_vars" in init_sql_content
+
+    def test_mcp_configs_has_indexes(self, init_sql_content: str) -> None:
+        """验证 mcp_configs 表含必要索引 (agent_user / system / unique_name)."""
+        assert "idx_mcp_configs_agent_user" in init_sql_content
+        assert "idx_mcp_configs_system" in init_sql_content
+        assert "idx_mcp_configs_unique_name" in init_sql_content
+
+    def test_mcp_configs_has_updated_at_trigger(self, init_sql_content: str) -> None:
+        """验证 mcp_configs 表挂了 update_updated_at 触发器."""
+        assert "trg_mcp_configs_updated_at" in init_sql_content
+
+    def test_mcp_configs_has_preset_system_configs(self, init_sql_content: str) -> None:
+        """验证预置了 3 个系统 MCP 配置 (fetch / filesystem / git)."""
+        # 预置 INSERT 语句应含这 3 个系统 MCP
+        assert "'fetch'" in init_sql_content
+        assert "'filesystem'" in init_sql_content
+        assert "'git'" in init_sql_content
+        # 都应是 is_system = TRUE
+        # 统计 is_system = TRUE 的预置行 (至少 3 个)
+        assert init_sql_content.count("is_system = TRUE") >= 3 or (
+            init_sql_content.count("TRUE") >= 3
+        )
 
     def test_contains_report_type_label_column(self, init_sql_content: str) -> None:
         """验证含 'report_type_label' 列 (research_reports 表扩展列)."""

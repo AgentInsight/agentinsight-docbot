@@ -132,6 +132,28 @@ class CoordinatorA:
                 span.update(output={"errors": errors})
                 return {"errors": errors}
 
+            # 校验通过后, 从 DB 加载并解密仓库配置 (供 c_code_learning_node 按需克隆)
+            # 延迟导入避免 agents/ 反向依赖 api/
+            from src.api.repo_routes import _fetch_repo_row, _load_repo_config
+            from src.memory.db_initializer import get_pool
+
+            user_id = state.get("user_id", "")
+            agent_id = state.get("agent_id", "agentinsight-docbot")
+            repo_config: dict[str, Any] = {}
+            if user_id and agent_id:
+                try:
+                    pool = await get_pool()
+                    row = await _fetch_repo_row(pool, repo_id, user_id, agent_id)
+                    if row:
+                        repo_config = _load_repo_config(row)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("coordinator_a 加载 repo_config 失败: %s", e)
+
+            if not repo_config or not repo_config.get("repo_url"):
+                error = f"repo_not_found: {repo_id}"
+                span.update(output={"error": error})
+                return {"errors": [error]}
+
             span.update(
                 output={
                     "repo_id": repo_id,
@@ -146,6 +168,7 @@ class CoordinatorA:
                 "report_format": report_format,
                 "language": language,
                 "iteration_count": 1,
+                "_repo_config": repo_config,
             }
 
     @staticmethod

@@ -99,7 +99,8 @@ src/
 │   ├── settings.py            # 全局 pydantic-settings Settings SSOT（agent_name='agentinsight-docbot'）
 │   └── docbot/                # docbot 专属配置
 │       ├── personas.py        # DOCBOT_REPORT_PERSONAS（8 种文档 persona 字典）
-│       ├── outlines.py        # 8 种文档默认大纲加载器（读取 docs/*_OUTLINE.md）
+│       ├── outlines.py        # 8 种文档默认大纲加载器（读取 outlines/*.yaml, Pydantic 校验）
+│       ├── outlines/          # 8 种文档默认大纲 YAML 文件（智能体友好格式）
 │       └── prompts.py         # docbot 专属提示词模板
 ├── skills/
 │   ├── docbot/                # docbot 6 步流水线技能实现
@@ -127,15 +128,8 @@ src/
     ├── repo_routes.py         # 新增：/v1/repos 用户代码仓库 CRUD + 测试 + 同步
     └── ip_user_resolver.py    # 从 AIR 拷贝
 
-docs/                          # 8 种文档默认大纲（运行时按需读取）
-├── ARCHITECTURE_OUTLINE.md    # 技术架构文档默认大纲
-├── HLD_OUTLINE.md             # 概要设计文档默认大纲
-├── PRD_OUTLINE.md             # 需求文档默认大纲
-├── TEST_CASE_OUTLINE.md       # 测试用例文档默认大纲
-├── OPTIMIZATION_OUTLINE.md    # 系统优化文档默认大纲
-├── PERF_ANALYSIS_OUTLINE.md   # 性能分析文档默认大纲
-├── DEFECT_OUTLINE.md          # 系统缺陷文档默认大纲
-└── API_DOC_OUTLINE.md         # API 文档默认大纲
+docs/                          # 设计与架构文档（ARCHITECTURE.md / DESIGN_AGENT.md / DESIGN_FRONTEND.md）
+# 8 种文档默认大纲已迁移至 src/config/docbot/outlines/*.yaml（YAML 格式, 智能体友好, 由 outlines.py 加载）
 
 scripts/init.sql               # 完整 DDL（基础 DDL + docbot 专属 DDL）
 tests/                         # 测试分层（unit / functional / api / regression / e2e 等，详见第 13 章）
@@ -216,7 +210,7 @@ docbot 采用**顶层图 + 报告子图 + asyncio.gather 并发派发**双层结
 
 2. **报告子图（子智能体 B + C/D/E/F + G）**：每报告类型独立子图实例，6 步顺序执行：
    - 任务一（`c_code_learning`）：STRATEGIC LLM 深度学习代码仓库 → 写 `code_learning_cache_key`
-   - 任务二（`c_outline_refine`）：STRATEGIC LLM 基于 8 种文档默认大纲（从 `docs/*_OUTLINE.md` 加载） + 代码上下文细化纲要 → 写 `outline_cache_key`
+   - 任务二（`c_outline_refine`）：STRATEGIC LLM 基于 8 种文档默认大纲（从 `src/config/docbot/outlines/*.yaml` 加载） + 代码上下文细化纲要 → 写 `outline_cache_key`
    - 任务三（`d_content_fill`）：SMART LLM 按章节顺序填充内容（含 RAG 检索 + SVG 配图生成）→ 写 `content_cache_keys[idx]`，循环执行
    - 任务四（`e_review`）：SMART LLM 评审 D 的内容，与 D 形成修订循环（`max_revisions_per_chapter=3`）→ 写 `reviewed_cache_keys[idx]`，循环执行
    - 任务五（`f_merge`）：SMART LLM 合并所有章节 + 去重 → 写 `merged_cache_key`
@@ -315,24 +309,25 @@ docbot 采用**顶层图 + 报告子图 + asyncio.gather 并发派发**双层结
 
 **文档类型 4 层适配机制（核心约定，优先选择）**：
 docbot 8 种文档类型（技术架构 / 概要设计 / 需求 / 测试用例 / 系统优化 / 性能分析 / 系统缺陷 / API 文档）刻意不引入 `DocTypeClassifier`，用 4 层隐形机制替代，不推荐业务代码 if-else 文档类型分支：
-1. **Persona 层**：`src/config/docbot/personas.py` 的 `DOCBOT_REPORT_PERSONAS` 字典为每种文档类型定义 `role_name` + `description` + `tone` + `target_audience` + `outline_file`，通过 `agent_role` 注入复用 `ReportGenerator`（零代码改动），无 if-else 文档类型分支。
-2. **Outline 层**：`src/config/docbot/outlines.py` 提供 `load_outline(report_type)` 加载器，运行时从 `docs/*_OUTLINE.md` 读取默认大纲（8 种独立文件，对应 IEEE 软件工程标准 / Google Tech Writing Guide / Microsoft Docs 风格指南），任务二 STRATEGIC LLM 在此基础上根据代码上下文细化。
+1. **Persona 层**：`src/config/docbot/personas.py` 的 `DOCBOT_REPORT_PERSONAS` 字典为每种文档类型定义 `role_name` + `description` + `tone` + `target_audience` + `outline_yaml`，通过 `agent_role` 注入复用 `ReportGenerator`（零代码改动），无 if-else 文档类型分支。
+2. **Outline 层**：`src/config/docbot/outlines.py` 提供 `load_outline(report_type)` 加载器，运行时从 `src/config/docbot/outlines/*.yaml` 读取默认大纲（8 种独立 YAML 文件, Pydantic OutlineSpec schema 校验, 智能体友好格式），任务二 STRATEGIC LLM 在此基础上根据代码上下文细化。
 3. **Retriever 层**：任务三 D 内容填充时按章节标题 + 关键词检索 Qdrant 用户私有数据（代码索引，namespace 含 `repo_id`），使用从 AIR 拷贝的 `rag/retriever.py` 实现。
 4. **MCP 层**：系统启动时自动注册 `mcp-server-git` + `mcp-server-filesystem`，`GitMCPAdapter`（`tools/git_mcp.py`）让 LLM 自动选工具访问代码仓库。MCP 配置不入 `mcp_configs` 表、不暴露 CRUD 端点。
 
 **8 种文档默认大纲文件（核心约定，优先选择）**：
-| 文档类型 | outline_file |
+YAML 格式（智能体友好）, 位于 `src/config/docbot/outlines/`, 由 `outlines.py` 加载并经 Pydantic OutlineSpec schema 校验。每文件含 `report_type` / `name_zh` / `name_en` / `default_chapters` / `max_chapters` / `persona{role,mission,target_audience}` / `chapters[]{idx,title,purpose,sections,key_points,example}` / `writing_rules` / `output_format` 字段。
+| 文档类型 | outline_yaml |
 |---------|--------------|
-| 技术架构文档（`architecture`） | `docs/ARCHITECTURE_OUTLINE.md` |
-| 概要设计文档（`design`） | `docs/HLD_OUTLINE.md` |
-| 需求文档（`requirements`） | `docs/PRD_OUTLINE.md` |
-| 测试用例文档（`testcase`） | `docs/TEST_CASE_OUTLINE.md` |
-| 系统优化文档（`optimization`） | `docs/OPTIMIZATION_OUTLINE.md` |
-| 性能分析文档（`performance`） | `docs/PERF_ANALYSIS_OUTLINE.md` |
-| 系统缺陷文档（`defect`） | `docs/DEFECT_OUTLINE.md` |
-| API 文档（`api_doc`） | `docs/API_DOC_OUTLINE.md` |
+| 技术架构文档（`architecture`） | `src/config/docbot/outlines/architecture.yaml` |
+| 概要设计文档（`design`） | `src/config/docbot/outlines/design.yaml` |
+| 需求文档（`requirements`） | `src/config/docbot/outlines/requirements.yaml` |
+| 测试用例文档（`testcase`） | `src/config/docbot/outlines/testcase.yaml` |
+| 系统优化文档（`optimization`） | `src/config/docbot/outlines/optimization.yaml` |
+| 性能分析文档（`performance`） | `src/config/docbot/outlines/performance.yaml` |
+| 系统缺陷文档（`defect`） | `src/config/docbot/outlines/defect.yaml` |
+| API 文档（`api_doc`） | `src/config/docbot/outlines/api_doc.yaml` |
 
-不推荐：新增 `DocTypeClassifier` / `doc_type_prompts/*.yaml` 等基于文档类型分类器的实现；节点内 `if report_type == "xxx"` 分支；硬编码文档类型 prompt 字典；将默认大纲内嵌到 Python 代码中（应通过外部 Markdown 文件加载，便于非开发人员维护）。如确需分类器方案，应说明理由并等待用户确认。
+不推荐：新增 `DocTypeClassifier` / `doc_type_prompts/*.yaml` 等基于文档类型分类器的实现；节点内 `if report_type == "xxx"` 分支；硬编码文档类型 prompt 字典；将默认大纲内嵌到 Python 代码中（应通过外部 YAML 文件加载，便于非开发人员维护）。如确需分类器方案，应说明理由并等待用户确认。
 
 **支持语言（核心约定，优先选择）**：
 docbot 文档输出仅支持 2 种语言：
@@ -571,7 +566,7 @@ docbot 仓库当前仅持有生产联网模式 + 生产离线模式所需的最�
 - 回归测试为合并门禁，不推荐跳过或 `@skip`。
 
 **关键测试用例（核心约定，优先选择）**：
-1. **单元测试**：`DOCBOT_REPORT_PERSONAS` 8 种 persona 完整性（含 `outline_file` 字段）/ 8 种大纲文件存在性（`test_outlines.py` 校验 `docs/*_OUTLINE.md` 存在）/ `GitMCPAdapter` 各平台 URL 解析 / AES-GCM 加密解密往返 / `coordinator_a` 派发逻辑（mock 子图）+ `language` 校验（仅 zh/en）/ D-E 修订循环守卫 / Redis 缓存键管理 / Qdrant namespace 多仓库隔离（含 `repo_id`）
+1. **单元测试**：`DOCBOT_REPORT_PERSONAS` 8 种 persona 完整性（含 `outline_yaml` 字段）/ 8 种 YAML 大纲文件存在性（`test_outlines.py` 校验 `src/config/docbot/outlines/*.yaml` 存在并通过 OutlineSpec schema 校验）/ `GitMCPAdapter` 各平台 URL 解析 / AES-GCM 加密解密往返 / `coordinator_a` 派发逻辑（mock 子图）+ `language` 校验（仅 zh/en）/ D-E 修订循环守卫 / Redis 缓存键管理 / Qdrant namespace 多仓库隔离（含 `repo_id`）
 2. **功能测试**：端到端克隆 + 索引 + 检索（小仓库，验证 `namespace={agent_id}:{user_id}:{repo_id}` 写入）/ 8 种文档类型各生成一份（mock LLM）/ 多报告并发派发（3 个 B 子图）/ D-E 修订循环（3 轮）
 3. **API 测试**：`/v1/repos` CRUD + 测试 + 同步 / `/v1/chat/completions` 一键生成 SSE 流式 / `/v1/reports/{id}/download` 5 种格式 / 敏感字段不返回原文 / 端点不存在校验（`/v1/feedback`、`/v1/ws/{session_id}`、`/v1/mcp/configs` 均返回 404/405）
 4. **e2e 测试**：调用 `/v1/repos` 配置仓库 → 调用 `/v1/chat/completions` 一键生成 → 验证 SSE 进度 → 调用 `/v1/reports/{id}/download` 验证报告下载 → 切换 `session_id` 验证隔离
@@ -594,15 +589,15 @@ docbot 仓库当前仅持有生产联网模式 + 生产离线模式所需的最�
 
 - [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)：架构文档（顶层设计、目录结构、多智能体编排、数据库设计、LLM 网关、RAG、MCP、API、部署、安全合规、性能容量、测试策略）
 - [docs/DESIGN_AGENT.md](./docs/DESIGN_AGENT.md)：智能体详细设计文档（代码级，State schema、节点函数、守卫路由、图构建器、7 个子智能体业务逻辑、缓存管理、8 种 persona 字典、8 种默认大纲加载器、提示词模板、Settings 扩展、GitMCPAdapter、`/v1/repos` API、init.sql 追加 DDL、server.py 含系统 MCP 子进程启动、Dockerfile、docker-compose.yml、测试用例骨架）
-- 8 种文档默认大纲（运行时按需加载，详见第 7 章）：
-  - [docs/ARCHITECTURE_OUTLINE.md](./docs/ARCHITECTURE_OUTLINE.md)：技术架构文档
-  - [docs/HLD_OUTLINE.md](./docs/HLD_OUTLINE.md)：概要设计文档
-  - [docs/PRD_OUTLINE.md](./docs/PRD_OUTLINE.md)：需求文档
-  - [docs/TEST_CASE_OUTLINE.md](./docs/TEST_CASE_OUTLINE.md)：测试用例文档
-  - [docs/OPTIMIZATION_OUTLINE.md](./docs/OPTIMIZATION_OUTLINE.md)：系统优化文档
-  - [docs/PERF_ANALYSIS_OUTLINE.md](./docs/PERF_ANALYSIS_OUTLINE.md)：性能分析文档
-  - [docs/DEFECT_OUTLINE.md](./docs/DEFECT_OUTLINE.md)：系统缺陷文档
-  - [docs/API_DOC_OUTLINE.md](./docs/API_DOC_OUTLINE.md)：API 文档
+- 8 种文档默认大纲（YAML 格式, 智能体友好, 运行时按需加载, 详见第 7 章）：
+  - [src/config/docbot/outlines/architecture.yaml](./src/config/docbot/outlines/architecture.yaml)：技术架构文档
+  - [src/config/docbot/outlines/design.yaml](./src/config/docbot/outlines/design.yaml)：概要设计文档
+  - [src/config/docbot/outlines/requirements.yaml](./src/config/docbot/outlines/requirements.yaml)：需求文档
+  - [src/config/docbot/outlines/testcase.yaml](./src/config/docbot/outlines/testcase.yaml)：测试用例文档
+  - [src/config/docbot/outlines/optimization.yaml](./src/config/docbot/outlines/optimization.yaml)：系统优化文档
+  - [src/config/docbot/outlines/performance.yaml](./src/config/docbot/outlines/performance.yaml)：性能分析文档
+  - [src/config/docbot/outlines/defect.yaml](./src/config/docbot/outlines/defect.yaml)：系统缺陷文档
+  - [src/config/docbot/outlines/api_doc.yaml](./src/config/docbot/outlines/api_doc.yaml)：API 文档
 
 > **历史前端文档说明**：`docs/DESIGN_FRONTEND.md` 为历史遗留前端设计文档，前端职责已划归独立的演示平台 `../agentinsight-demo`，该文档不再作为本仓库的实现依据，仅供历史参考。如需查看当前前端实现规范，请参阅 `../agentinsight-demo/AGENTS.md`。
 

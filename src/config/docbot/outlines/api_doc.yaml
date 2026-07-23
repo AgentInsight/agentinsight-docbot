@@ -1,0 +1,205 @@
+report_type: api_doc
+name_zh: API 文档
+name_en: API Document
+default_chapters: 12
+max_chapters: 20
+
+persona:
+  role: API 设计工程师
+  mission: 生成结构完整、可驱动 SDK 与客户端集成的 API 文档
+  target_audience:
+    - 前端/移动端开发者：关注接口详情与 SDK
+    - 第三方开发者：关注认证授权与 Webhook
+    - 后端工程师：关注接口契约与版本治理
+
+chapters:
+  - idx: 1
+    title: 引言
+    purpose: 阐明编写目的、适用范围与参考文档
+    sections: []
+    key_points:
+      - 编写目的（前端/移动端/第三方/集成商）
+      - 适用范围（v1.0、HTTP/HTTPS、JSON、RESTful）
+      - 术语缩略语（API、JWT、OAuth2、RBAC）
+      - 参考文档（架构/概设/OpenAPI 规范）
+      - 版本历史
+
+  - idx: 2
+    title: API 概览
+    purpose: 提供基础信息、API 分类与清单
+    sections: []
+    key_points:
+      - 基础信息（Base URL、HTTPS、JSON、ISO 8601）
+      - API 分类（/users、/orders、/products、/auth、/files）
+      - API 清单（API-NNN/方法/路径/描述/鉴权）
+      - 通用响应结构（code/message/data/traceId）
+      - OpenAPI 规范（Swagger UI、Postman Collection）
+    example: |
+      ```json
+      {
+        "code": 0,
+        "message": "success",
+        "data": { },
+        "traceId": "abc-123",
+        "timestamp": "2026-07-20T10:00:00Z"
+      }
+      ```
+
+  - idx: 3
+    title: 认证与授权
+    purpose: 定义认证方式、OAuth2 流程、Token 规范与权限矩阵
+    sections: []
+    key_points:
+      - 认证方式（OAuth2、API Key、JWT、mTLS）
+      - OAuth2 流程（授权码→token→访问→refresh）
+      - Token 规范（Bearer、access 2h/refresh 30d）
+      - 授权模型（RBAC、ABAC、资源所有者校验）
+      - 权限矩阵（角色 admin/user、CRUD 操作）
+
+  - idx: 4
+    title: 通用约定
+    purpose: 统一命名、HTTP 方法语义、版本、分页、过滤与幂等性
+    sections: []
+    key_points:
+      - 命名规范（路径 kebab-case、字段 camelCase）
+      - HTTP 方法语义（GET/POST/PUT/PATCH/DELETE）
+      - 版本策略（/v1/、兼容期 6 月、Deprecation Header）
+      - 分页规范（cursor/limit 默认 20 最大 100）
+      - 过滤排序（?status=、?sort=、?fields=）
+      - 幂等性（Idempotency-Key、保留 48h）
+      - 国际化（Accept-Language、X-Timezone）
+      - 请求头约定（Authorization、X-Request-Id）
+
+  - idx: 5
+    title: 错误处理
+    purpose: 定义错误响应结构、HTTP 状态码与业务错误码
+    sections: []
+    key_points:
+      - 错误响应结构（code/message/details/traceId）
+      - HTTP 状态码（200/400/401/403/404/429/500）
+      - 业务错误码分段（40xxx 用户/41xxx 订单/42xxx 商品）
+      - 错误码清单（ERR_40001/40101/40301/40401/42901）
+      - 重试建议（4xx 不重试、5xx 退避、429 Retry-After）
+    example: |
+      ```json
+      {
+        "code": 40001,
+        "message": "参数缺失：user_id",
+        "details": [{ "field": "user_id", "issue": "required" }],
+        "traceId": "abc-123",
+        "timestamp": "2026-07-20T10:00:00Z"
+      }
+      ```
+
+  - idx: 6
+    title: 限流与配额
+    purpose: 定义限流策略、配额管理与豁免规则
+    sections: []
+    key_points:
+      - 限流策略（RATE-001 全局/RATE-002 IP/RATE-003 用户）
+      - 配额管理（上传 10GB/月、调用 100 万次/月）
+      - 限流响应头（X-RateLimit-*、Retry-After）
+      - 限流豁免（内部服务、监控探针、白名单）
+
+  - idx: 7
+    title: API 详情
+    purpose: 按统一模板详述每个接口的请求、响应、错误码与示例
+    sections: []
+    key_points:
+      - 详情模板（方法/路径/参数/请求体/响应/示例）
+      - 认证模块（POST /auth/login、/logout、/refresh）
+      - 用户模块（GET/POST/PUT/DELETE /users）
+      - 订单/商品/文件模块（/files/upload multipart）
+    example: |
+      ```markdown
+      ### API-NNN <接口名>
+      - **方法**：POST
+      - **路径**：/v1/orders
+      - **鉴权**：Bearer Token
+      #### 请求体
+      ```json
+      { "productId": "string", "quantity": 0 }
+      ```
+      #### 201 Created 响应
+      ```json
+      { "code": 0, "data": { "orderId": "string", "status": "PENDING" } }
+      ```
+      #### cURL 示例
+      ```bash
+      curl -X POST https://api.<domain>.com/v1/orders \
+        -H "Authorization: Bearer <token>" \
+        -d '{"productId":"prod-001","quantity":2}'
+      ```
+      ```
+
+  - idx: 8
+    title: 数据模型
+    purpose: 定义实体清单、字段类型规范、枚举值与公共字段
+    sections: []
+    key_points:
+      - 实体清单（User/Order/Product 等）
+      - 字段类型（string/int/float/bool/timestamp/uuid/enum）
+      - 枚举值（PENDING/PAID/SHIPPED/COMPLETED/CANCELLED）
+      - 公共字段（id、createdAt、updatedAt、version）
+
+  - idx: 9
+    title: Webhook 与回调
+    purpose: 定义事件、注册、签名验证与重试策略
+    sections: []
+    key_points:
+      - Webhook 事件（order.created/paid/shipped）
+      - Webhook 注册（POST /v1/webhooks、url+events）
+      - 回调签名（HMAC-SHA256、X-Signature）
+      - 重试策略（3 次、指数退避 1s/2s/4s）
+      - 回调示例（event/data/timestamp）
+
+  - idx: 10
+    title: SDK 与示例
+    purpose: 提供官方 SDK、使用示例与 Playground
+    sections: []
+    key_points:
+      - 官方 SDK（Python/JavaScript/Java/Go）
+      - SDK 示例（client.orders.create(...)）
+      - Postman/Insomnia（Collection、Environment）
+      - cURL 示例库
+      - Playground（沙盒环境、测试 Key sk_test_xxx）
+
+  - idx: 11
+    title: 版本治理与弃用
+    purpose: 定义版本策略、变更分类与弃用流程
+    sections: []
+    key_points:
+      - 版本策略（/v1//v2/、兼容期 6 月、弃用通知）
+      - 变更分类（Patch/Minor/Major）
+      - 弃用流程（标记→通知→迁移指南→下线）
+      - 变更日志（版本/日期/类型/内容）
+      - 迁移指南（v1→v2 字段映射）
+
+  - idx: 12
+    title: 附录
+    purpose: 提供完整错误码表、字段规范、FAQ 与最佳实践
+    sections: []
+    key_points:
+      - 完整错误码表（与 §5.4 同步）
+      - 字段命名规范（kebab-case/camelCase/UPPER_SNAKE）
+      - FAQ（token 获取/过期、429 排查、5xx 处理）
+      - 最佳实践（SDK、token 续期、幂等键、退避重试）
+      - 参考资料（OpenAPI 3.0、Stripe/Microsoft 指南）
+      - 联系与支持（邮箱、工单、社区、状态页）
+
+writing_rules:
+  - 遵循编号约定：API-NNN/ERR-NNNN/RATE-NNN
+  - 按 §7.1 模板编写接口，便于自动化解析
+  - 维护 OpenAPI 规范文件，自动生成详情
+  - 分段错误码按模块，编号不重复
+  - 为每接口提供 cURL 与一种 SDK 示例
+  - 遵循 §4.1 字段命名规范
+
+output_format:
+  default_language: zh
+  default_format: markdown
+  chapter_numbering: "1, 1.1, 1.1.1"
+  code_blocks: JSON/YAML/cURL/Python/JavaScript 标注语言类型
+  tables: Markdown 表格
+  recommendation: 配合 OpenAPI/Swagger UI 自动生成接口详情
+  to_word: pandoc 本文件 -o 输出.docx --toc --toc-depth=3

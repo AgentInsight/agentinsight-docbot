@@ -521,21 +521,48 @@ async def _stream_docbot(
                     # 背压: 让出控制权
                     await asyncio.sleep(0.001)
 
-            # 输出最终报告内容
-            final_formats = final_state.get("report_formats") or {}
-            fmt = request.report_format or "markdown"
-            final_content = (
-                final_formats.get("html")
-                or final_formats.get("json")
-                or final_formats.get("md")
-                or final_state.get("report_md")
-                or ""
-            )
-            if not final_content:
+            # 输出最终报告内容 (从 final_reports 列表提取, save_reports_node 已持久化到 DB)
+            final_reports = final_state.get("final_reports") or []
+
+            if not final_reports:
                 hint = "\n\n*未生成报告内容 (可能代码仓库为空或同步未完成)*"
                 collected_content.append(hint)
                 yield _sse_chunk({"content": hint})
             else:
+                # 推送每份报告的元信息 (含 download_urls, 前端用于构造下载链接)
+                report_ids: list[str] = []
+                summaries: list[str] = []
+                for rpt in final_reports:
+                    if not isinstance(rpt, dict):
+                        continue
+                    rid = rpt.get("report_id", "")
+                    if rid:
+                        report_ids.append(rid)
+                    title = rpt.get("title") or rpt.get("report_type", "")
+                    summary = rpt.get("summary", "")
+                    download_urls = rpt.get("download_urls", {})
+                    if summary:
+                        summaries.append(f"### {title}\n\n{summary}")
+                    # 推送单份报告元信息 (前端用于展示报告卡片 + 下载链接)
+                    yield _sse_chunk(
+                        {
+                            "delta": {
+                                "report": {
+                                    "report_id": rid,
+                                    "title": title,
+                                    "summary": summary,
+                                    "download_urls": download_urls,
+                                }
+                            }
+                        }
+                    )
+
+                # 汇总文本作为最终 content (供会话持久化)
+                final_content = (
+                    "\n\n".join(summaries)
+                    if summaries
+                    else "文档已生成, 请通过下载链接获取"
+                )
                 collected_content.append(final_content)
                 # 分块推送最终报告内容
                 paragraphs = final_content.split("\n\n")
@@ -543,38 +570,9 @@ async def _stream_docbot(
                     yield _sse_chunk({"content": para + "\n\n"})
                     await asyncio.sleep(0.001)
 
-            # 推送 PDF/DOCX 文件路径
-            pdf_path = final_formats.get("pdf")
-            if fmt == "pdf" and pdf_path:
-                yield _sse_chunk({"file_path": pdf_path, "report_format": "pdf"})
-
-            # 推送 report_ids
-            report_ids = final_state.get("report_ids") or []
-            if report_ids:
-                yield _sse_chunk({"report_ids": report_ids})
-
-            # 报告持久化后台任务 (不阻塞 [DONE])
-            async def _persist_reports() -> None:
-                try:
-                    from src.memory.report_store import get_report_store
-
-                    _report_store = get_report_store()
-                    _report_md = final_formats.get("md") or final_state.get("report_md", "")
-                    if _report_md:
-                        await _report_store.save_report(
-                            session_id=session_id,
-                            user_id=initial_state.get("user_id", ""),
-                            agent_id=initial_state.get("agent_id", ""),
-                            query=initial_state.get("query", ""),
-                            report_md=_report_md,
-                            report_format=final_state.get("report_format", "markdown"),
-                            sources=[],
-                            agent_role=None,
-                        )
-                except Exception:
-                    logger.warning("报告持久化存储失败 (不阻断主流程)", exc_info=True)
-
-            _create_background_task(_persist_reports())
+                # 推送 report_ids (前端用于构造下载链接)
+                if report_ids:
+                    yield _sse_chunk({"report_ids": report_ids})
 
         except Exception as e:
             logger.exception("docbot 流水线执行失败")
@@ -652,45 +650,28 @@ async def _run_docbot(
                 graph.ainvoke(initial_state, config=graph_config),
                 timeout=settings.graph_total_timeout,
             )
-            fmt = request.report_format or "markdown"
-            final_formats = final_state.get("report_formats") or {}
-            if fmt == "html" and final_formats.get("html"):
-                content = final_formats["html"]
-            elif fmt == "json" and final_formats.get("json"):
-                content = final_formats["json"]
-            elif fmt == "pdf" and final_formats.get("pdf"):
-                content = final_formats["pdf"]
-                file_path = final_formats["pdf"]
-            elif fmt == "docx" and final_formats.get("docx"):
-                content = "[DOCX 报告已生成, 请通过下载端点获取]"
-            else:
-                content = final_formats.get("md") or final_state.get("report_md", "")
-            if not content:
+            # 从 final_reports 列表提取内容 (save_reports_node 已持久化到 DB)
+            final_reports = final_state.get("final_reports") or []
+
+            if not final_reports:
                 content = "未生成报告内容 (可能代码仓库为空或同步未完成)"
-
-            report_ids = final_state.get("report_ids") or []
-
-            # 报告持久化
-            try:
-                from src.memory.report_store import get_report_store
-
-                _report_store = get_report_store()
-                _report_md = final_formats.get("md") or final_state.get("report_md", "")
-                if _report_md:
-                    saved = await _report_store.save_report(
-                        session_id=session_id,
-                        user_id=initial_state.get("user_id", ""),
-                        agent_id=initial_state.get("agent_id", ""),
-                        query=initial_state.get("query", ""),
-                        report_md=_report_md,
-                        report_format=final_state.get("report_format", "markdown"),
-                        sources=[],
-                        agent_role=None,
-                    )
-                    if saved and not report_ids:
-                        report_ids = [saved]
-            except Exception:
-                logger.warning("报告持久化存储失败 (不阻断主流程)", exc_info=True)
+            else:
+                summaries: list[str] = []
+                for rpt in final_reports:
+                    if not isinstance(rpt, dict):
+                        continue
+                    rid = rpt.get("report_id", "")
+                    if rid:
+                        report_ids.append(rid)
+                    title = rpt.get("title") or rpt.get("report_type", "")
+                    summary = rpt.get("summary", "")
+                    if summary:
+                        summaries.append(f"### {title}\n\n{summary}")
+                content = (
+                    "\n\n".join(summaries)
+                    if summaries
+                    else "文档已生成, 请通过下载链接获取"
+                )
 
             # usage 估算
             total_tokens = final_state.get("total_tokens", 0) or 0

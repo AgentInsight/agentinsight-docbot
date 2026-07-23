@@ -65,6 +65,7 @@ class TestPostgresInitScript:
             "daily_report_usage",
             "token_usage_logs",
             "chat_messages",
+            "mcp_configs",
         ]
         result = _psql_query(
             "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename;"

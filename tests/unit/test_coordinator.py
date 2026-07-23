@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -19,6 +19,47 @@ from src.agents.docbot.coordinator import (
     _VALID_REPORT_TYPES,
     CoordinatorA,
 )
+
+
+def _mock_repo_db():
+    """构造 mock 上下文: 让 coordinator_a 的 repo_not_found 检查通过.
+
+    coordinator 校验通过后会查 user_git_repos 表加载 repo_config,
+    单元测试不应依赖真实 Postgres, 这里 patch 三个 DB 入口.
+    """
+    mock_row = {
+        "id": "repo-123",
+        "agent_id": "agentinsight-docbot",
+        "user_id": "user1",
+        "repo_name": "test-repo",
+        "platform": "github",
+        "repo_url": "https://github.com/test/repo.git",
+        "default_branch": "main",
+        "auth_type": "none",
+        "encrypted_token": None,
+        "encrypted_username": None,
+        "encrypted_password": None,
+        "encrypted_ssh_key": None,
+        "ssh_passphrase": None,
+        "clone_depth": 0,
+        "enabled": True,
+    }
+    mock_repo_config = {
+        "repo_url": "https://github.com/test/repo.git",
+        "default_branch": "main",
+        "clone_depth": 0,
+        "auth_type": "none",
+        "token": None,
+        "username": None,
+        "password": None,
+        "ssh_key": None,
+        "ssh_passphrase": None,
+    }
+    return (
+        patch("src.memory.db_initializer.get_pool", AsyncMock(return_value=MagicMock())),
+        patch("src.api.repo_routes._fetch_repo_row", AsyncMock(return_value=mock_row)),
+        patch("src.api.repo_routes._load_repo_config", return_value=mock_repo_config),
+    )
 
 
 class TestCoordinatorAValidation:
@@ -51,7 +92,10 @@ class TestCoordinatorAValidation:
             "user_id": "user1",
             "agent_id": "agentinsight-docbot",
         }
-        result = await coordinator.run(state)
+        # mock DB: coordinator 校验通过后会查 user_git_repos 表加载 repo_config
+        p_pool, p_fetch, p_load = _mock_repo_db()
+        with p_pool, p_fetch, p_load:
+            result = await coordinator.run(state)
         assert "errors" not in result
         assert result["repo_id"] == "repo-123"
         assert result["report_types"] == ["architecture"]
@@ -164,8 +208,15 @@ class TestLanguageValidation:
             "report_format": "markdown",
             "language": "zh",
         }
-        state = {"messages": [{"role": "user", "content": json.dumps(instruction)}]}
-        result = await coordinator.run(state)
+        state = {
+            "messages": [{"role": "user", "content": json.dumps(instruction)}],
+            "user_id": "user1",
+            "agent_id": "agentinsight-docbot",
+        }
+        # mock DB: coordinator 校验通过后会查 user_git_repos 表加载 repo_config
+        p_pool, p_fetch, p_load = _mock_repo_db()
+        with p_pool, p_fetch, p_load:
+            result = await coordinator.run(state)
         assert "errors" not in result
         assert result["language"] == "zh"
 
@@ -180,8 +231,15 @@ class TestLanguageValidation:
             "report_format": "markdown",
             "language": "en",
         }
-        state = {"messages": [{"role": "user", "content": json.dumps(instruction)}]}
-        result = await coordinator.run(state)
+        state = {
+            "messages": [{"role": "user", "content": json.dumps(instruction)}],
+            "user_id": "user1",
+            "agent_id": "agentinsight-docbot",
+        }
+        # mock DB: coordinator 校验通过后会查 user_git_repos 表加载 repo_config
+        p_pool, p_fetch, p_load = _mock_repo_db()
+        with p_pool, p_fetch, p_load:
+            result = await coordinator.run(state)
         assert "errors" not in result
         assert result["language"] == "en"
 

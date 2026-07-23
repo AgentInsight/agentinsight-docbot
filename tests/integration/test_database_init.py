@@ -25,6 +25,7 @@ EXPECTED_TABLES = [
     "chat_messages",
     "report_limits",
     "daily_report_usage",
+    "mcp_configs",
 ]
 
 EXPECTED_INDEXES = [

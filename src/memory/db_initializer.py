@@ -196,8 +196,12 @@ async def init_database(settings: Settings | None = None) -> bool:
                 "SELECT 1 FROM pg_database WHERE datname = $1", target_db
             )
             if not exists:
-                # CREATE DATABASE 不支持参数绑定, 但 target_db 来自配置, 不接受用户输入
-                await admin_conn.execute(f'CREATE DATABASE "{target_db}"')
+                # CREATE DATABASE 不支持参数绑定, 使用 quote_ident 进行标识符转义
+                # 防止 SQL 注入 (即使 target_db 来自配置, 也遵循第 11 章 Prompt Injection 硬约束)
+                safe_db_name = await admin_conn.fetchval(
+                    "SELECT quote_ident($1)", target_db
+                )
+                await admin_conn.execute(f"CREATE DATABASE {safe_db_name}")
                 logger.info("PostgreSQL 数据库 %s 不存在, 已创建", target_db)
         finally:
             await admin_conn.close()

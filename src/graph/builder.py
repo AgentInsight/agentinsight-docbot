@@ -17,6 +17,7 @@ from typing import Any
 from langgraph.graph import END, StateGraph
 
 from src.graph.nodes import (
+    cleanup_repo_node,
     coordinator_a_node,
     final_reviewer_g_node,
     save_reports_node,
@@ -31,7 +32,7 @@ async def build_docbot_graph(settings: Any | None = None):
     """构建 docbot 顶层图 (异步, 因 checkpointer 创建为 async).
 
     节点顺序:
-    coordinator_a → spawn_b_tasks → final_reviewer_g → save_reports → END
+    coordinator_a → spawn_b_tasks → final_reviewer_g → save_reports → cleanup_repo → END
 
     Args:
         settings: Settings 实例 (可选; None 时由 get_checkpointer 内部 get_settings())
@@ -48,12 +49,14 @@ async def build_docbot_graph(settings: Any | None = None):
     graph.add_node("spawn_b_tasks", partial(spawn_b_tasks_node, settings=settings))
     graph.add_node("final_reviewer_g", partial(final_reviewer_g_node, settings=settings))
     graph.add_node("save_reports", partial(save_reports_node, settings=settings))
+    graph.add_node("cleanup_repo", partial(cleanup_repo_node, settings=settings))
 
     graph.set_entry_point("coordinator_a")
     graph.add_edge("coordinator_a", "spawn_b_tasks")
     graph.add_edge("spawn_b_tasks", "final_reviewer_g")
     graph.add_edge("final_reviewer_g", "save_reports")
-    graph.add_edge("save_reports", END)
+    graph.add_edge("save_reports", "cleanup_repo")
+    graph.add_edge("cleanup_repo", END)
 
     # PostgresSaver 创建为 async (get_checkpointer 返回 coroutine)
     checkpointer = await get_checkpointer(settings)

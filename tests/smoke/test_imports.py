@@ -60,11 +60,12 @@ class TestModuleImports:
     def test_import_outlines_functions(self) -> None:
         """验证 outlines 模块导出函数."""
         try:
-            from src.config.docbot.outlines import load_outline, parse_markdown_outline
+            from src.config.docbot.outlines import load_outline, load_outline_meta, load_outline_full
         except ImportError:
             pytest.skip("outlines 模块未安装依赖")
         assert callable(load_outline)
-        assert callable(parse_markdown_outline)
+        assert callable(load_outline_meta)
+        assert callable(load_outline_full)
 
     def test_import_prompts_constants(self) -> None:
         """验证 prompts 模块导出常量."""

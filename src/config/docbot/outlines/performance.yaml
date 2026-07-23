@@ -1,0 +1,200 @@
+report_type: performance
+name_zh: 性能分析文档
+name_en: Performance Analysis Document
+default_chapters: 14
+max_chapters: 20
+
+persona:
+  role: 首席性能架构师
+  mission: 定位代码级性能问题并给出优化方案
+  target_audience:
+    - 架构师：关注代码结构、算法、并发模型
+    - 开发工程师：关注代码热点与优化项
+    - SRE：关注 Profile 数据与运行时指标
+
+chapters:
+  - idx: 1
+    title: 引言
+    purpose: 阐明编写目的、分析背景、范围与参考文档
+    sections: []
+    key_points:
+      - 编写目的：代码分析而非压测
+      - 分析背景：告警/慢请求/内存增长
+      - 分析范围：源代码/Profile/运行时指标
+      - 术语：Profile/Flame Graph/GC/N+1
+      - 参考文档：架构文档/代码仓库/监控看板
+      - 版本历史
+
+  - idx: 2
+    title: 代码性能分析方法论
+    purpose: 建立静态分析+运行时 Profile+指标反推三层框架
+    sections: []
+    key_points:
+      - 分析框架：静态+运行时+指标反推
+      - 原则：先量化、二八、根因到代码行
+      - 方法对照：审查/CPU/内存/锁/I/O Profile
+      - 工具链：Pyroscope/async-profiler/MAT/Jaeger
+      - 流程：识别→锁定→静态→Profile→根因→优化→验证
+
+  - idx: 3
+    title: 代码结构与质量分析
+    purpose: 分析架构层级、设计模式、复杂度与依赖耦合
+    sections: []
+    key_points:
+      - 架构层级：分层/依赖方向/跨层调用
+      - 设计模式：模式/位置/性能影响
+      - 复杂度：圈≤10、函数≤50 行、嵌套≤4
+      - 重复与坏味道：重复/上帝类/长方法
+      - 依赖耦合：依赖图/环依赖/扇入扇出
+      - 代码组织：SRP/包结构/命名
+
+  - idx: 4
+    title: 算法与数据结构分析
+    purpose: 识别算法复杂度问题与数据结构选型不当
+    sections: []
+    key_points:
+      - 算法复杂度：编号/位置/算法/时间复杂度
+      - 数据结构：List→HashSet、ArrayList→LinkedList
+      - 循环优化：循环内 DB/IO、嵌套→哈希化
+      - 字符串：拼接/正则预编译/编码统一
+      - 集合反模式：List.contains/LinkedList.get
+      - 数学计算：浮点/位运算/预计算
+
+  - idx: 5
+    title: 并发与多线程分析
+    purpose: 分析线程模型、线程池配置、锁竞争与异步化机会
+    sections: []
+    key_points:
+      - 线程模型：池/协程/Reactor、负载匹配
+      - 线程池配置：core/max/queue/拒绝策略
+      - 锁竞争：全局锁→分段锁、行锁→乐观锁
+      - 死锁活锁：检测/锁顺序/超时配置
+      - 线程安全：共享状态/非原子/可见性
+      - 异步化：阻塞清单/CompletableFuture/asyncio
+      - 线程上下文：ThreadLocal 泄漏/切换开销
+
+  - idx: 6
+    title: 内存与 GC 分析
+    purpose: 分析对象分配、内存泄漏与 GC 调优
+    sections: []
+    key_points:
+      - 对象分配：高频临时 List/大对象入老年代
+      - 内存泄漏：Heap Dump+MAT、GC Root 链
+      - GC 调优：频率/停顿/吞吐，目标与调整
+      - 堆分析：大小/对象 Top10/老年代占比
+      - 内存优化：对象池/LRU+上限
+      - 内存可见性：volatile/final/happens-before
+
+  - idx: 7
+    title: 数据库访问代码分析
+    purpose: 分析 SQL 代码、N+1 查询、ORM 使用与事务边界
+    sections: []
+    key_points:
+      - SQL：SELECT */无索引 WHERE/LIKE '%xx%'
+      - N+1：位置/查询数/JOIN 或批量优化
+      - ORM：Lazy 滥用/Eager 过度/二级缓存
+      - 事务边界：过长/含 RPC/隔离过高
+      - 连接管理：池配置/泄漏检测/复用
+      - 批量操作：循环单条→batch，10x 收益
+      - SQL 注入：参数化查询/动态 SQL 安全
+
+  - idx: 8
+    title: I/O 与网络代码分析
+    purpose: 分析网络 I/O 模式、序列化、批量化与连接复用
+    sections: []
+    key_points:
+      - 网络 I/O：同步阻塞→异步/连接池
+      - 序列化：JSON→Protobuf/MessagePack
+      - 批量化：多次 RPC→批量 -90% RT
+      - 流式处理：分页/大文件流/SSE
+      - 压缩：API 响应/日志体积 vs CPU
+      - 连接复用：Keep-Alive/HTTP/2 多路复用
+      - 超时重试：HTTP/DB 超时/雪崩风险
+
+  - idx: 9
+    title: 缓存代码分析
+    purpose: 分析缓存策略、命中率、失效逻辑与防护
+    sections: []
+    key_points:
+      - 缓存策略：TTL 过短/无缓存/永久易脏
+      - 命中率：缓存名/命中率/目标≥95%
+      - 失效逻辑：主动+TTL/异步失效/延迟双删
+      - 防护：穿透→布隆/雪崩→随机 TTL/击穿→互斥
+      - 大 Key 热 Key：拆分/多副本/本地缓存
+      - 序列化：Key 规范/Value 性能评估
+
+  - idx: 10
+    title: 框架与中间件代码分析
+    purpose: 分析框架使用、配置调优与中间件使用问题
+    sections: []
+    key_points:
+      - 框架使用：Spring 反射/FastAPI 同步
+      - 框架配置：Tomcat/HikariCP/Redis 池
+      - 源码热点：拦截器/过滤器/AOP 开销
+      - 中间件：Kafka 同步→异步/Redis 集群/ES 分页
+      - 序列化：Jackson/Gson/Fastjson 反射开销
+
+  - idx: 11
+    title: Profile 与热点定位
+    purpose: 定位 CPU/内存/锁/I/O Profile 热点函数与根因
+    sections: []
+    key_points:
+      - CPU Profile：sample/instrument、火焰图
+      - CPU 热点：函数/模块/CPU 占比/调用次数
+      - 内存 Profile：对象 Top10/Heap dump
+      - 锁 Profile：锁名/等待时间/等待线程
+      - I/O Profile：文件/网络 I/O 热点
+      - 链路分析：慢请求 Top10/跨服务耗时
+      - 根因模板：CPU 占比/调用路径/根因
+
+  - idx: 12
+    title: 优化建议与实施
+    purpose: 汇总优化项清单、分类、路线图与收益预估
+    sections: []
+    key_points:
+      - 优化项清单：编号/类别/收益/成本/优先级
+      - 分类汇总：算法/并发/内存/DB/I/O/缓存
+      - 路线图：P1 1 周/P2 2-3 周/P3 4-6 周
+      - 收益预估：P99/QPS/CPU/内存/GC 停顿
+      - 详述模板：当前代码/优化后/原理/收益
+      - 实施风险：风险/概率/影响/缓解/责任人
+
+  - idx: 13
+    title: 验证与回归
+    purpose: 执行单元基准、集成与回归测试验证优化效果
+    sections: []
+    key_points:
+      - 单元基准：pytest-benchmark/JMH
+      - 集成验证：P99/资源占用/错误率对比
+      - 回归测试：功能无破坏/性能无劣化
+      - 验证结果：优化项/前/后/达成/备注
+      - 长期观察：7 天稳定/30 天无劣化
+
+  - idx: 14
+    title: 附录
+    purpose: 提供性能问题汇总、Profile 报告与追踪矩阵
+    sections: []
+    key_points:
+      - 性能问题汇总：编号/类别/位置/严重度
+      - Profile 报告：火焰图/dump/锁/链路
+      - 代码片段索引：优化项/文件/行号
+      - 优化项追踪矩阵：状态/验证/收益
+      - 静态分析报告：SonarQube/复杂度/重复
+      - 参考资料：代码大全/重构/Java Performance
+
+writing_rules:
+  - 约定编号：PERF-NNN/HOT-NNN/OPT-NNN/R-NNN
+  - 关联代码行：每个 PERF 标注 file:line
+  - 对比代码：优化项给出当前与优化后代码
+  - 量化数据：CPU 占比/调用次数/耗时支撑
+  - 关联提交：优化项链接 PR/Commit
+  - 更新矩阵：完成后更新 §13 验证与 §14 追踪
+
+output_format:
+  default_language: zh
+  default_format: markdown
+  chapter_numbering: "1, 1.1, 1.1.1"
+  diagrams: 火焰图/调用栈图/ER 图
+  tables: Markdown 表格
+  code_blocks: 标注语言类型, 含文件:行号
+  to_word: pandoc 本文件 -o 输出.docx --toc --toc-depth=3

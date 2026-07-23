@@ -487,11 +487,13 @@ class GitMCPAdapter:
             )
             return results
 
-    async def test_connection(self, repo_config: dict) -> bool:
+    async def test_connection(self, repo_config: dict) -> dict[str, Any]:
         """通过 git ls-remote 探活 (不实际克隆).
 
         Returns:
-            True 表示可访问, False 表示不可访问
+            {"success": bool, "error": str | None}
+            success=True 表示可访问, error 为 None
+            success=False 表示不可访问, error 含具体失败原因
         """
         async with trace_tool(
             name="docbot.git.test_connection",
@@ -501,13 +503,13 @@ class GitMCPAdapter:
             repo_url = repo_config.get("repo_url", "")
             if not repo_url:
                 span.update(metadata={"tool_name": "git.test_connection", "success": False})
-                return False
+                return {"success": False, "error": "仓库 URL 为空"}
 
             try:
                 self._check_git_domain(repo_url)
-            except ValueError:
+            except ValueError as e:
                 span.update(metadata={"tool_name": "git.test_connection", "success": False, "reason": "domain_not_allowed"})
-                return False
+                return {"success": False, "error": str(e)}
 
             auth_url, _ = self._build_auth_url(repo_url, repo_config)
             auth_type = (repo_config.get("auth_type") or "none").lower()
@@ -529,6 +531,7 @@ class GitMCPAdapter:
                     timeout=30,
                 )
                 success = rc == 0
+                error_msg = None if success else (err.strip()[:500] if err.strip() else "git ls-remote 失败 (退出码非零)")
                 span.update(
                     output={"success": success, "stderr_head": err[:200]},
                     metadata={
@@ -537,14 +540,14 @@ class GitMCPAdapter:
                         "stderr_head": err[:200],
                     },
                 )
-                return success
+                return {"success": success, "error": error_msg}
             except Exception as e:  # noqa: BLE001
                 logger.warning("test_connection 异常: %s", e)
                 span.update(
                     output={"success": False, "error": str(e)[:200]},
                     metadata={"tool_name": "git.test_connection", "success": False, "error": str(e)[:200]},
                 )
-                return False
+                return {"success": False, "error": str(e)[:500]}
             finally:
                 if ssh_key_path:
                     try:
