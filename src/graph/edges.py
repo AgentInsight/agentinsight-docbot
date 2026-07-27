@@ -45,19 +45,17 @@ def route_after_e(state: dict) -> str:
     """E 评审后路由.
 
     修订循环控制 (见 docs/DESIGN_AGENT.md 第 5.2 节):
-    - 简化版: 通过 revision_count + max_revisions_per_chapter 控制
+    - 简化版: 通过 review_idx + max_revisions_per_chapter 控制
     - 实际修订建议由 LLM 输出的 needs_revision 标志决定 (写入 reviewed_cache, 节点读取)
     - 达 max_revisions_per_chapter 时强制通过 (ReviewerE 内已实现, 此处仅路由)
 
-    路由规则:
-    - 还有未评审章节 (current_chapter_idx < len(chapters)) → 'next_chapter'
-      (D 已推进到下一章节, E 继续评审)
+    路由规则 (基于独立 review_idx, 不依赖 current_chapter_idx):
+    - 还有未评审章节 (review_idx < len(chapters)) → 'next_chapter'
+      (E 继续评审下一章节)
     - 所有章节评审完毕 → 'done' (流转到 f_merge)
 
-    注: 简化版未实现基于 needs_revision 的 revise 循环 (需把 needs_revision
-        写入 state, 当前 reviewed_cache 仅存 Redis). 实际实现可扩展 state
-        增加 current_chapter_needs_revision 字段, 或在此读取 Redis (异步,
-        LangGraph 路由函数不支持 async, 故简化).
+    修复说明: 原实现依赖 current_chapter_idx (已被 D 推进到末尾), 导致 E 只评审
+    最后一个章节, f_merge 丢失前 N-1 章节内容. 现改用独立 review_idx 字段.
 
     Args:
         state: ReportTaskState
@@ -65,19 +63,14 @@ def route_after_e(state: dict) -> str:
     Returns:
         'next_chapter' | 'done'
     """
-    current_idx = state.get("current_chapter_idx", 0)
+    review_idx = state.get("review_idx", 0)
     chapters = state.get("chapters", [])
-    revision_count = state.get("revision_count", 0)
-    max_revisions = state.get("max_revisions_per_chapter", 3)
 
     # 所有章节评审完毕 → done
-    if current_idx >= len(chapters):
-        # revision_count 达上限时强制完成 (避免无限循环)
-        if revision_count >= max_revisions:
-            return "done"
+    if review_idx >= len(chapters):
         return "done"
 
-    # 还有未评审章节 → next_chapter (D 已推进到下一章节, E 继续评审)
+    # 还有未评审章节 → next_chapter (E 继续评审下一章节)
     return "next_chapter"
 
 

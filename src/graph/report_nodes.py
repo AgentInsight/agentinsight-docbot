@@ -27,6 +27,12 @@ from src.skills.docbot.cache import build_cache_key, read_cache, write_cache
 
 logger = logging.getLogger(__name__)
 
+# ContentFillerD 实例缓存 (key = "{agent_id}:{session_id}:{report_type}")
+# 跨 d_content_fill_node 调用复用同一实例, 使 _dedup_compressor 的
+# _written_embeddings 跨章节累积, 实现章节级语义去重 (P0 优化).
+# 子图所有章节处理完毕后清理缓存, 避免内存泄漏.
+_filler_cache: dict[str, Any] = {}
+
 
 async def b_init_session_node(state: dict, settings: Any | None = None) -> dict:
     """任务一前置: 为该报告任务创建独立 LLM 会话 ID + report_id.
@@ -116,72 +122,42 @@ async def c_code_learning_node(state: dict, settings: Any | None = None) -> dict
     return {"code_learning_cache_key": cache_key}
 
 
-async def c_outline_refine_node(state: dict, settings: Any | None = None) -> dict:
-    """任务二: 基于默认大纲 + 代码上下文, STRATEGIC LLM 细化报告纲要.
+async def c_load_outline_node(state: dict, settings: Any | None = None) -> dict:
+    """任务二: 直接加载默认大纲 (纲要细化步骤已移除, 原始大纲够用).
 
     职责:
-    1. 读取 code_learning_cache
-    2. 通过 config.docbot.outlines.load_outline(report_type) 加载默认大纲
-    3. STRATEGIC LLM 根据代码上下文细化大纲 (增删改章节)
-    4. 输出 chapters: [{idx, title, sections, key_points}]
-    5. 写入 outline_cache
+    1. 通过 config.docbot.outlines.load_outline(report_type) 加载默认大纲
+    2. 将章节列表写入 state.chapters
+    3. 初始化 current_chapter_idx=0 和 review_idx=0
+
+    说明: 用户要求去掉纲要细化步骤, 直接使用 outlines/*.yaml 配置的原始大纲.
+    原始大纲已足够详细 (含 idx/title/purpose/sections/key_points/example),
+    无需 LLM 二次细化.
 
     Args:
         state: ReportTaskState
         settings: Settings 实例
 
     Returns:
-        delta dict: {outline_cache_key, chapters, current_chapter_idx}
+        delta dict: {chapters, current_chapter_idx, review_idx}
     """
-    from src.agents.docbot.outline_refiner import OutlineRefinerC
+    from src.config.docbot.outlines import load_outline
 
-    agent_id = state.get("agent_id", "agentinsight-docbot")
-    user_id = state.get("user_id", "")
-    session_id = state.get("session_id", "")
     report_type = state.get("report_type", "")
-    language = state.get("language", "zh")
-    llm_session_id = state.get("llm_session_id", "")
-    code_learning_cache_key = state.get("code_learning_cache_key", "")
 
-    # 读取任务一产物 (从 Redis)
-    code_learning: dict = {}
-    if code_learning_cache_key:
-        raw = await read_cache(code_learning_cache_key, settings=settings)
-        if raw:
-            try:
-                parsed = json.loads(raw)
-                if isinstance(parsed, dict):
-                    code_learning = parsed
-            except (json.JSONDecodeError, TypeError) as e:
-                logger.warning("code_learning_cache JSON 解析失败: %s", e)
+    chapters = load_outline(report_type)
+    if not chapters:
+        logger.warning("加载默认大纲失败 (report_type=%s), 使用空列表", report_type)
+        chapters = []
 
-    # 调用 OutlineRefinerC 细化纲要
-    refiner = OutlineRefinerC(settings)
-    outline = await refiner.refine_outline(
-        code_learning=code_learning,
-        report_type=report_type,
-        language=language,
-        llm_session_id=llm_session_id,
-        settings=settings,
+    logger.info(
+        "加载默认大纲: report_type=%s, chapters=%d", report_type, len(chapters)
     )
 
-    # 写入 outline_cache
-    outline_cache_key = build_cache_key(
-        agent_id=agent_id,
-        user_id=user_id,
-        session_id=session_id,
-        type_="outline",
-        report_type=report_type,
-    )
-    await write_cache(
-        outline_cache_key,
-        json.dumps(outline, ensure_ascii=False),
-        settings=settings,
-    )
     return {
-        "outline_cache_key": outline_cache_key,
-        "chapters": outline.get("chapters", []),
+        "chapters": chapters,
         "current_chapter_idx": 0,
+        "review_idx": 0,
     }
 
 
@@ -218,13 +194,38 @@ async def d_content_fill_node(state: dict, settings: Any | None = None) -> dict:
     chapters = state.get("chapters", [])
     idx = state.get("current_chapter_idx", 0)
     if idx >= len(chapters):
-        # 所有章节已填充完毕, 流转到 f_merge (由 route_after_d 控制)
+        # 所有章节已填充完毕, 清理 ContentFillerD 缓存 (释放 _dedup_compressor 内存)
+        # 并流转到 f_merge (由 route_after_d 控制)
+        filler_cache_key = f"{agent_id}:{session_id}:{report_type}"
+        _filler_cache.pop(filler_cache_key, None)
         return {}
 
     chapter = chapters[idx]
     if not isinstance(chapter, dict):
-        logger.warning("章节 %d 不是 dict, 跳过", idx)
-        return {"current_chapter_idx": idx + 1}
+        # 章节无效时写入空内容占位, 保持 content_cache_keys 与 chapters 索引一致
+        logger.warning("章节 %d 不是 dict, 写入空内容占位", idx)
+        placeholder_key = build_cache_key(
+            agent_id=agent_id,
+            user_id=user_id,
+            session_id=session_id,
+            type_="content",
+            report_type=report_type,
+            chapter_idx=idx,
+        )
+        placeholder_result = {
+            "chapter_idx": idx,
+            "content_md": f"## 章节内容缺失\n\n本章节定义无效, 无法填充内容.",
+            "image_svgs": [],
+        }
+        await write_cache(
+            placeholder_key,
+            json.dumps(placeholder_result, ensure_ascii=False),
+            settings=settings,
+        )
+        return {
+            "content_cache_keys": [placeholder_key],
+            "current_chapter_idx": idx + 1,
+        }
 
     # 读取 code_learning_cache
     code_learning: dict = {}
@@ -239,8 +240,13 @@ async def d_content_fill_node(state: dict, settings: Any | None = None) -> dict:
             except (json.JSONDecodeError, TypeError) as e:
                 logger.warning("code_learning_cache JSON 解析失败: %s", e)
 
-    # 调用 ContentFillerD 填充章节
-    filler = ContentFillerD(settings)
+    # 调用 ContentFillerD 填充章节 (P0: 复用同一实例, 使 _dedup_compressor
+    # 跨 fill_chapter 调用累积 _written_embeddings, 实现章节级语义去重)
+    filler_cache_key = f"{agent_id}:{session_id}:{report_type}"
+    filler = _filler_cache.get(filler_cache_key)
+    if filler is None:
+        filler = ContentFillerD(settings)
+        _filler_cache[filler_cache_key] = filler
     chapter_result = await filler.fill_chapter(
         chapter=chapter,
         code_learning=code_learning,
@@ -276,18 +282,23 @@ async def e_review_node(state: dict, settings: Any | None = None) -> dict:
     """任务四: E 评审 D 填充的章节内容.
 
     职责:
-    1. 读取 content_cache_keys[current_chapter_idx - 1] (D 已 +1)
-    2. SMART LLM 评审 (覆盖度 / 准确性 / 代码路径引用 / 完整性)
-    3. 输出评审建议 + 修订后的内容
-    4. 写入 reviewed_cache_keys
-    5. 与 D 形成修订循环 (max_revisions_per_chapter=3 控制硬上限)
+    1. 使用独立 review_idx 索引 (不依赖 current_chapter_idx, 避免索引错位)
+    2. 读取 content_cache_keys[review_idx]
+    3. SMART LLM 评审 (覆盖度 / 准确性 / 代码路径引用 / 完整性)
+    4. 输出评审建议 + 修订后的内容
+    5. 写入 reviewed_cache_keys[review_idx]
+    6. review_idx += 1
+
+    修复说明: 原实现使用 current_chapter_idx - 1 作为索引, 但 D 完成所有章节后
+    current_chapter_idx 已等于 len(chapters), 导致 E 只评审最后一个章节.
+    现改用独立 review_idx 字段, 从 0 开始递增, 确保所有章节都被评审.
 
     Args:
         state: ReportTaskState
         settings: Settings 实例
 
     Returns:
-        delta dict: {reviewed_cache_keys: [key], revision_count: 1}
+        delta dict: {reviewed_cache_keys: [key], review_idx: idx+1}
     """
     from src.agents.docbot.reviewer import ReviewerE
 
@@ -300,8 +311,8 @@ async def e_review_node(state: dict, settings: Any | None = None) -> dict:
 
     chapters = state.get("chapters", [])
     content_cache_keys = state.get("content_cache_keys", [])
-    # D 已 +1, E 处理上一个章节
-    idx = state.get("current_chapter_idx", 0) - 1
+    # 使用独立 review_idx, 不依赖 current_chapter_idx
+    idx = state.get("review_idx", 0)
     if idx < 0 or idx >= len(content_cache_keys) or idx >= len(chapters):
         return {}
 
@@ -363,12 +374,18 @@ async def e_review_node(state: dict, settings: Any | None = None) -> dict:
     )
     return {
         "reviewed_cache_keys": [reviewed_key],
+        "review_idx": idx + 1,  # 推进评审索引
         "revision_count": 1,  # operator.add 累积修订次数
     }
 
 
 async def f_merge_node(state: dict, settings: Any | None = None) -> dict:
-    """任务五: F 合并所有 reviewed_cache_keys 内容, SMART LLM 去重.
+    """任务五: F 合并所有章节内容, SMART LLM 去重.
+
+    修复说明: 原实现只读取 reviewed_cache_keys, 若 E 评审时某些章节被跳过,
+    则 reviewed_data 长度 < len(chapters), 导致合并文档缺失章节.
+    现增加兜底机制: 按 chapter_idx 顺序遍历所有章节, 优先读 reviewed_cache,
+    若缺失则降级读 content_cache, 确保所有章节内容都被合并.
 
     Args:
         state: ReportTaskState
@@ -387,18 +404,63 @@ async def f_merge_node(state: dict, settings: Any | None = None) -> dict:
     llm_session_id = state.get("llm_session_id", "")
     chapters = state.get("chapters", [])
     reviewed_cache_keys = state.get("reviewed_cache_keys", [])
+    content_cache_keys = state.get("content_cache_keys", [])
 
-    # 读取所有 reviewed_cache
-    reviewed_data: list[dict] = []
-    for key in reviewed_cache_keys:
+    # 先读取所有 reviewed_cache 到 dict (按数组位置 0-based 索引, 与 chapters 数组对齐)
+    reviewed_map: dict[int, dict] = {}
+    for arr_idx, key in enumerate(reviewed_cache_keys):
         raw = await read_cache(key, settings=settings)
         if raw:
             try:
                 parsed = json.loads(raw)
                 if isinstance(parsed, dict):
-                    reviewed_data.append(parsed)
+                    reviewed_map[arr_idx] = parsed  # 用数组位置作键, 与 chapters 对齐
             except (json.JSONDecodeError, TypeError) as e:
                 logger.warning("reviewed_cache JSON 解析失败 (跳过): %s", e)
+
+    # 再读取所有 content_cache 到 dict (按数组位置 0-based 索引, 兜底用)
+    content_map: dict[int, dict] = {}
+    for arr_idx, key in enumerate(content_cache_keys):
+        raw = await read_cache(key, settings=settings)
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    content_map[arr_idx] = parsed  # 用数组位置作键, 与 chapters 对齐
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning("content_cache JSON 解析失败 (跳过): %s", e)
+
+    # 按章节顺序组装 reviewed_data: 优先 reviewed, 缺失则降级 content
+    # 使用数组位置 i (0-based) 作为查找键, 与 reviewed_map/content_map 一致
+    reviewed_data: list[dict] = []
+    missing_count = 0
+    for i, ch in enumerate(chapters):
+        if not isinstance(ch, dict):
+            continue
+        # 优先用 reviewed (按数组位置查找)
+        if i in reviewed_map:
+            reviewed_data.append(reviewed_map[i])
+        # 降级用 content (按数组位置查找)
+        elif i in content_map:
+            logger.warning("章节 %d 缺少评审结果, 降级使用填充内容", i)
+            reviewed_data.append(content_map[i])
+        else:
+            # 完全缺失, 写入占位
+            missing_count += 1
+            logger.error("章节 %d 内容完全缺失!", i)
+            reviewed_data.append({
+                "chapter_idx": ch.get("idx", i + 1),
+                "content_md": f"## {ch.get('title', f'章节{i+1}')}\n\n本章节内容生成失败, 请重新生成.",
+                "image_svgs": [],
+            })
+
+    if missing_count > 0:
+        logger.error("合并阶段发现 %d 个章节内容完全缺失", missing_count)
+
+    logger.info(
+        "合并阶段: chapters=%d, reviewed=%d, content_fallback=%d, missing=%d",
+        len(chapters), len(reviewed_map), len(reviewed_data) - len(reviewed_map) - missing_count, missing_count,
+    )
 
     # 调用 MergerF 合并
     merger = MergerF(settings)
@@ -515,7 +577,7 @@ async def g_final_in_subgraph_node(state: dict, settings: Any | None = None) -> 
 __all__ = [
     "b_init_session_node",
     "c_code_learning_node",
-    "c_outline_refine_node",
+    "c_load_outline_node",
     "d_content_fill_node",
     "e_review_node",
     "f_merge_node",

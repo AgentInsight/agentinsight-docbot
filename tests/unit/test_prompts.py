@@ -105,15 +105,16 @@ class TestPromptTemplates:
             assert ph in MERGE_PROMPT, f"MERGE_PROMPT 缺 {ph}"
 
     def test_final_review_prompt_placeholders_and_output_fields(self) -> None:
-        """FINAL_REVIEW_PROMPT 含占位符 + 输出 JSON 字段 title/summary/content_md."""
+        """FINAL_REVIEW_PROMPT 含占位符 + 输出 JSON 字段 title/summary/terminology/duplicate."""
         for ph in (
             "{role_name}", "{description}", "{report_type}", "{language}",
-            "{merged_content}", "{code_summary}",
+            "{sections_summary}", "{code_summary}",
         ):
             assert ph in FINAL_REVIEW_PROMPT, f"FINAL_REVIEW_PROMPT 缺 {ph}"
         assert "title" in FINAL_REVIEW_PROMPT
         assert "summary" in FINAL_REVIEW_PROMPT
-        assert "content_md" in FINAL_REVIEW_PROMPT
+        assert "terminology_suggestions" in FINAL_REVIEW_PROMPT
+        assert "duplicate_chapters" in FINAL_REVIEW_PROMPT
 
 
 class TestGetPrompt:

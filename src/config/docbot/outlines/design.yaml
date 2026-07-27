@@ -36,16 +36,13 @@ chapters:
       - 设计模式与编码约定
       - 关键设计决策与理由
     example: |
-      ```plantuml
-      @startuml
-      !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
-      Person(user, "<用户>")
-      System(sys, "<系统名>", "<职责>")
-      System_Ext(ext, "<外部系统>", "<协议>")
-      Rel(user, sys, "<动作>")
-      Rel(sys, ext, "<动作>", "<协议>")
-      @enduml
-      ```
+      ## 总体架构
+      | 层级 | 组件 | 职责 | 技术栈 |
+      |------|------|------|--------|
+      | 接入层 | <组件> | <职责> | <技术> |
+      | 业务层 | <组件> | <职责> | <技术> |
+      | 数据层 | <组件> | <职责> | <技术> |
+      说明: 系统会根据本章节标题自动生成 SVG 架构图并内嵌, 正文不要输出 PlantUML/Mermaid 代码。
 
   - idx: 3
     title: 模块划分
@@ -53,17 +50,16 @@ chapters:
     sections: []
     key_points:
       - 模块清单含职责与依赖
-      - 模块依赖图 PlantUML 无环
+      - 模块依赖图无环 (由系统自动生成 SVG 内嵌)
       - 模块职责输入/处理/输出
       - 模块间通信协议与同步性
     example: |
-      ```plantuml
-      @startuml
-      component [模块 A]
-      component [模块 B]
-      [模块 A] --> [模块 B]
-      @enduml
-      ```
+      ## 模块清单与依赖
+      | 模块 | 职责 | 上游依赖 | 下游依赖 | 通信协议 |
+      |------|------|----------|----------|----------|
+      | 模块 A | <职责> | - | 模块 B | 同步 HTTP |
+      | 模块 B | <职责> | 模块 A | - | - |
+      说明: 系统会根据本章节标题自动生成 SVG 模块依赖图并内嵌, 正文不要输出 PlantUML/Mermaid 代码。
 
   - idx: 4
     title: 接口设计
@@ -95,13 +91,12 @@ chapters:
       - 存储选型与理由
       - 数据流转链路
     example: |
-      ```plantuml
-      @startuml
-      entity User
-      entity Order
-      User ||--o{ Order
-      @enduml
-      ```
+      ## 数据模型 (ER 概念)
+      | 实体 | 字段 | 类型 | 关系 |
+      |------|------|------|------|
+      | User | id | PK | 1:N → Order |
+      | Order | id | PK | N:1 → User |
+      说明: 系统会根据本章节标题自动生成 SVG ER 图并内嵌, 正文不要输出 PlantUML/Mermaid 代码。
 
   - idx: 6
     title: 核心流程
@@ -109,23 +104,18 @@ chapters:
     sections: []
     key_points:
       - 用例清单含参与者
-      - 时序图覆盖核心用例
+      - 时序图覆盖核心用例 (由系统自动生成 SVG 内嵌)
       - 状态图核心对象流转
       - 活动图复杂业务流程
     example: |
-      ```plantuml
-      @startuml
-      actor User
-      participant "前端" as FE
-      participant "API" as API
-      participant "DB" as DB
-      User -> FE: 操作
-      FE -> API: 请求
-      API -> DB: 查询
-      DB --> API: 返回
-      API --> FE: 响应
-      @enduml
-      ```
+      ## 核心用例时序
+      | 步骤 | 参与方 | 动作 | 响应 |
+      |------|--------|------|------|
+      | 1 | 用户 | 发起操作 | - |
+      | 2 | 前端 | 调用 API | - |
+      | 3 | API | 查询 DB | 返回数据 |
+      | 4 | 前端 | 渲染响应 | 用户可见 |
+      说明: 系统会根据本章节标题自动生成 SVG 时序图并内嵌, 正文不要输出 PlantUML/Mermaid 代码。
 
   - idx: 7
     title: 异常处理与日志规范
@@ -160,20 +150,13 @@ chapters:
       - 配置管理与密钥管理
       - 运维监控与告警
     example: |
-      ```plantuml
-      @startuml
-      node "Region A" {
-        node "AZ-1" {
-          [API 服务 1]
-        }
-        node "AZ-2" {
-          [API 服务 2]
-        }
-      }
-      database "主库" as DB
-      [API 服务 1] --> DB
-      @enduml
-      ```
+      ## 部署架构拓扑
+      | 区域 | 可用区 | 组件 | 类型 | 依赖 |
+      |------|--------|------|------|------|
+      | Region A | AZ-1 | API 服务 1 | Container | 主库 |
+      | Region A | AZ-2 | API 服务 2 | Container | 主库 |
+      | - | - | 主库 | Database | - |
+      说明: 系统会根据本章节标题自动生成 SVG 部署图并内嵌, 正文不要输出 PlantUML/Mermaid 代码。
 
   - idx: 10
     title: 安全设计
@@ -222,7 +205,7 @@ chapters:
 writing_rules:
   - 模块依赖图必须无环
   - 接口契约优先用 OpenAPI/Protobuf 描述
-  - 数据模型 ER 图优先用 PlantUML
+  - 数据模型 ER 图由系统自动生成 SVG 内嵌, 正文禁止输出 PlantUML/Mermaid 代码
   - 时序图覆盖每个核心用例
   - 错误码按模块分段,编号不可重复
   - 设计决策必须有理由并与 ADR 关联
@@ -231,6 +214,6 @@ output_format:
   default_language: zh
   default_format: markdown
   chapter_numbering: "1, 1.1, 1.1.1"
-  diagrams: PlantUML (C4/时序图/ER 图)
+  diagrams: SVG (由系统自动生成并内嵌, 禁止 PlantUML/Mermaid)
   tables: Markdown 表格
   to_word: pandoc 本文件 -o 输出.docx --toc --toc-depth=3

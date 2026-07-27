@@ -230,8 +230,16 @@ async def final_reviewer_g_node(state: dict, settings: Any | None = None) -> dic
 async def save_reports_node(state: dict, settings: Any | None = None) -> dict:
     """保存最终报告到 Postgres research_reports 表 + 生成多格式下载链接.
 
-    复用从 AIR 拷贝的 ReportStore.save_report() + Publisher.publish() (见 AGENTS.md 第 3 章).
-    为 5 种格式 (markdown/html/pdf/docx/json) 各生成一份并保存.
+    对齐 AIR (researcher) 的单行存储策略:
+    - 仅保存 1 行 Markdown 原文 (report_format='markdown')
+    - 下载端点 /v1/reports/{report_id}/download?format=xxx 按需实时转换
+    - download_urls 为 5 种格式生成链接, 均指向同一 report_id
+
+    优势 (相比原 5 行预转换方案):
+    - 消除 JSON 双层包装 (原 json 格式入库时包装一次, 下载时再包装一次)
+    - 消除 DOCX str(bytes) 乱码 (原 docx 入库存 bytes 字符串表示)
+    - 消除 HTML 二次转换破损 (原 html 入库已转 HTML, 下载又当 Markdown 转)
+    - 节省 80% 存储空间 (5 行 → 1 行)
 
     Args:
         state: 顶层 DocbotState, 已含 final_reports
@@ -242,10 +250,8 @@ async def save_reports_node(state: dict, settings: Any | None = None) -> dict:
     """
     from src.memory.report_store import ReportStore
     from src.skills.docbot.cache import read_cache
-    from src.skills.researcher.publisher import Publisher
 
     report_store = ReportStore(settings) if settings is not None else ReportStore()
-    publisher = Publisher(settings) if settings is not None else Publisher()
 
     saved: list[dict] = []
     agent_id = state.get("agent_id", "agentinsight-docbot")
@@ -279,44 +285,36 @@ async def save_reports_node(state: dict, settings: Any | None = None) -> dict:
 
             image_svg = report.get("image_svg", "")
 
-            # 生成 5 种格式 (markdown/html/pdf/docx/json)
+            # 单行 Markdown 入库 (对齐 AIR 策略, 下载端点按需转换)
+            report_id = await report_store.save_report(
+                session_id=session_id,
+                user_id=user_id,
+                agent_id=agent_id,
+                query=report.get("title", report_type),
+                report_md=content_md,  # 纯 Markdown, 不做格式转换
+                report_format="markdown",
+                sources=[],
+                agent_role=report_type,
+                report_type_label=report_type,
+                report_summary=report.get("summary", ""),
+                report_image_svg=image_svg,
+            )
+
+            # 5 种格式下载链接均指向同一 report_id (下载端点按需转换)
             download_urls: dict[str, str] = {}
-            for fmt in ["markdown", "html", "pdf", "docx", "json"]:
-                try:
-                    converted = await publisher.publish(
-                        content_md,
-                        output_format=fmt,
-                        title=report.get("title", ""),
-                        user_id=user_id,
-                        session_id=session_id,
-                    )
-                    converted_content = converted.get("content", content_md)
-                    report_id = await report_store.save_report(
-                        session_id=session_id,
-                        user_id=user_id,
-                        agent_id=agent_id,
-                        query=report.get("title", report_type),
-                        report_md=str(converted_content) if converted_content else content_md,
-                        report_format=fmt,
-                        sources=[],
-                        agent_role=report_type,
-                        report_type_label=report_type,
-                        report_summary=report.get("summary", ""),
-                        report_image_svg=image_svg,
-                    )
-                    if report_id:
-                        download_urls[fmt] = f"/v1/reports/{report_id}/download?format={fmt}"
-                except Exception as e:  # noqa: BLE001
-                    logger.warning("格式转换失败 (跳过): fmt=%s, error=%s", fmt, e)
+            if report_id:
+                for fmt in ["markdown", "html", "pdf", "docx", "json"]:
+                    download_urls[fmt] = f"/v1/reports/{report_id}/download?format={fmt}"
 
             saved.append(
                 {
-                    "report_id": report.get("report_id", ""),
+                    "report_id": report_id or "",
                     "report_type": report_type,
                     "title": report.get("title", ""),
                     "summary": report.get("summary", ""),
                     "image_svg": image_svg,
                     "download_urls": download_urls,
+                    "content_md": content_md,  # 保留供 API 响应直接返回
                 }
             )
 

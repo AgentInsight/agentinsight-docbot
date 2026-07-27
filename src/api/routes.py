@@ -141,6 +141,9 @@ class ChatCompletionResponse(BaseModel):
     report_id: str | None = None
     # 多报告生成时的报告 ID 列表 (docbot 一次可生成多份文档)
     report_ids: list[str] | None = None
+    # 报告详情列表 (含 download_urls, 前端用于展示下载链接)
+    # 每项: {report_id, report_type, title, summary, download_urls: {markdown/html/pdf/docx/json: url}}
+    reports: list[dict[str, Any]] | None = None
 
 
 # ========== 会话持久化辅助 (以 UserId 为单位的对话保存) ==========
@@ -506,10 +509,6 @@ async def _stream_docbot(
                         progress += f"已派发 {report_count} 个报告任务\n"
                     elif node_name == "save_reports":
                         progress += "报告保存完成\n"
-                        # 推送 report_ids (前端用于构造下载链接)
-                        report_ids = delta.get("report_ids") or []
-                        if report_ids:
-                            yield _sse_chunk({"report_ids": report_ids})
                     elif node_name == "final_reviewer_g":
                         progress += "终审完成\n"
                     else:
@@ -532,6 +531,7 @@ async def _stream_docbot(
                 # 推送每份报告的元信息 (含 download_urls, 前端用于构造下载链接)
                 report_ids: list[str] = []
                 summaries: list[str] = []
+                reports_meta: list[dict[str, Any]] = []
                 for rpt in final_reports:
                     if not isinstance(rpt, dict):
                         continue
@@ -543,19 +543,16 @@ async def _stream_docbot(
                     download_urls = rpt.get("download_urls", {})
                     if summary:
                         summaries.append(f"### {title}\n\n{summary}")
+                    report_meta = {
+                        "report_id": rid,
+                        "report_type": rpt.get("report_type", ""),
+                        "title": title,
+                        "summary": summary,
+                        "download_urls": download_urls,
+                    }
+                    reports_meta.append(report_meta)
                     # 推送单份报告元信息 (前端用于展示报告卡片 + 下载链接)
-                    yield _sse_chunk(
-                        {
-                            "delta": {
-                                "report": {
-                                    "report_id": rid,
-                                    "title": title,
-                                    "summary": summary,
-                                    "download_urls": download_urls,
-                                }
-                            }
-                        }
-                    )
+                    yield _sse_chunk({"report": report_meta})
 
                 # 汇总文本作为最终 content (供会话持久化)
                 final_content = (
@@ -570,9 +567,11 @@ async def _stream_docbot(
                     yield _sse_chunk({"content": para + "\n\n"})
                     await asyncio.sleep(0.001)
 
-                # 推送 report_ids (前端用于构造下载链接)
+                # 推送 report_ids + reports 元信息 (前端用于构造下载链接)
                 if report_ids:
                     yield _sse_chunk({"report_ids": report_ids})
+                if reports_meta:
+                    yield _sse_chunk({"reports": reports_meta})
 
         except Exception as e:
             logger.exception("docbot 流水线执行失败")
@@ -644,6 +643,7 @@ async def _run_docbot(
         settings = get_settings()
         file_path: str | None = None
         report_ids: list[str] = []
+        reports_meta: list[dict[str, Any]] = []
         try:
             graph = await _get_graph()
             final_state = await asyncio.wait_for(
@@ -665,8 +665,18 @@ async def _run_docbot(
                         report_ids.append(rid)
                     title = rpt.get("title") or rpt.get("report_type", "")
                     summary = rpt.get("summary", "")
+                    download_urls = rpt.get("download_urls", {})
                     if summary:
                         summaries.append(f"### {title}\n\n{summary}")
+                    reports_meta.append(
+                        {
+                            "report_id": rid,
+                            "report_type": rpt.get("report_type", ""),
+                            "title": title,
+                            "summary": summary,
+                            "download_urls": download_urls,
+                        }
+                    )
                 content = (
                     "\n\n".join(summaries)
                     if summaries
@@ -700,6 +710,7 @@ async def _run_docbot(
                 "total_tokens": (len(initial_state["query"]) + len(content)) // 4,
             }
             report_ids = []
+            reports_meta = []
 
     return ChatCompletionResponse(
         id=completion_id,
@@ -716,6 +727,7 @@ async def _run_docbot(
         report_format=request.report_format or "markdown",
         file_path=file_path,
         report_ids=report_ids if report_ids else None,
+        reports=reports_meta if reports_meta else None,
     )
 
 

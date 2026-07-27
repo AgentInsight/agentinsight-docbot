@@ -53,16 +53,13 @@ chapters:
       - 外部系统与接口清单
       - 关键架构视图(逻辑/部署/数据)
     example: |
-      ```plantuml
-      @startuml
-      !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
-      Person(user, "<用户>")
-      System(sys, "<系统名>", "<职责>")
-      System_Ext(ext, "<外部系统>", "<协议>")
-      Rel(user, sys, "<动作>")
-      Rel(sys, ext, "<动作>", "<协议>")
-      @enduml
-      ```
+      ## 系统上下文 (C4 Level 1)
+      | 参与方 | 类型 | 职责 | 协议 |
+      |--------|------|------|------|
+      | <用户> | Person | <动作> | HTTP |
+      | <系统名> | System | <职责> | - |
+      | <外部系统> | System_Ext | <职责> | <协议> |
+      说明: 系统会根据本章节标题自动生成 SVG 架构图并内嵌, 正文不要输出 PlantUML/Mermaid 代码。
 
   - idx: 4
     title: 核心组件
@@ -75,16 +72,12 @@ chapters:
       - API 设计规范
       - 核心流程时序图
     example: |
-      ```plantuml
-      @startuml
-      !include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
-      System_Boundary(s, "<系统名>") {
-        Container(api, "API 服务", "<技术>", "<职责>")
-        ContainerDb(db, "数据库", "<技术>", "<数据>")
-      }
-      Rel(api, db, "读写")
-      @enduml
-      ```
+      ## 容器级组件清单 (C4 Level 2)
+      | 组件 | 类型 | 技术栈 | 职责 | 依赖 |
+      |------|------|--------|------|------|
+      | API 服务 | Container | <技术> | <职责> | 数据库 |
+      | 数据库 | ContainerDb | <技术> | <数据存储> | - |
+      说明: 系统会根据本章节标题自动生成 SVG 组件图并内嵌, 正文不要输出 PlantUML/Mermaid 代码。
 
   - idx: 5
     title: 数据架构与数据流
@@ -182,7 +175,7 @@ writing_rules:
   - 每章末附图示与 ADR 链接
   - ADR 单独存放于 ADRs/ 目录
   - 矩阵类信息优先用表格
-  - 架构/时序/组件图用 PlantUML
+  - 架构/时序/组件图由系统自动生成 SVG 内嵌, 正文禁止输出 PlantUML/Mermaid 代码
   - 量化指标必须给出来源
   - 安全合规内容需明确法规依据
 
@@ -190,6 +183,6 @@ output_format:
   default_language: zh
   default_format: markdown
   chapter_numbering: "1, 1.1, 1.1.1"
-  diagrams: PlantUML (C4 模型优先)
+  diagrams: SVG (由系统自动生成并内嵌, 禁止 PlantUML/Mermaid)
   tables: Markdown 表格, 避免过宽
   to_word: pandoc 本文件 -o 输出.docx --toc --toc-depth=3

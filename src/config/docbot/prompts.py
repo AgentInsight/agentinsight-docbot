@@ -16,44 +16,64 @@
 占位符与输出格式对照表:
 | 模板 | 占位符 | 输出格式 |
 |------|--------|----------|
-| CODE_LEARNING_PROMPT   | report_type / file_index / file_contents | Markdown 文本 |
+| CODE_LEARNING_PROMPT   | report_type / role_name / description / file_index / file_contents | JSON: {summary, key_modules, dependencies, architecture_notes} |
 | OUTLINE_REFINE_PROMPT  | role_name / description / report_type / language / default_outline / code_summary / key_modules / dependencies | JSON: {chapters: [{idx, title, sections, key_points}]} |
-| CONTENT_FILL_PROMPT    | chapter_title / chapter_sections / key_points / language / code_summary / rag_context | Markdown 文本 |
+| CONTENT_FILL_PROMPT    | chapter_title / chapter_purpose / chapter_sections / key_points / chapter_example / language / code_summary / rag_context | Markdown 文本 (单章节) |
 | REVIEW_PROMPT          | chapter_title / chapter_sections / key_points / content / code_summary / language | JSON: {needs_revision, review_notes, revised_content} |
 | MERGE_PROMPT           | report_type / language / chapter_count / all_content | Markdown 文本 |
-| FINAL_REVIEW_PROMPT    | role_name / description / report_type / language / merged_content / code_summary | JSON: {title, summary, content_md} |
+| FINAL_REVIEW_PROMPT    | role_name / description / report_type / language / sections_summary / code_summary | JSON: {title, summary, terminology_suggestions, duplicate_chapters} |
 """
 from __future__ import annotations
 
 
 # ===== 任务一：代码深度学习 =====
 # 调用方: skills.docbot.code_learner.learn_code()
-# format() kwargs: report_type / file_index / file_contents
-# 输出: Markdown 文本
-CODE_LEARNING_PROMPT = """你是 {report_type} 类型技术文档的代码学习专家. 你的任务是深度学习用户提供的代码仓库, 提炼出撰写文档所需的关键信息.
+# format() kwargs: report_type / role_name / description / file_index / file_contents
+# 输出: JSON {"summary", "key_modules", "dependencies", "architecture_notes"}
+# 设计参考: Aider (RepoMap + PageRank) / Continue.dev (多索引) / AutoCodeRover (AST 检索)
+# 优化要点: persona 注入 + report_type 差异化 + 结构化 JSON 输出 + 代码引用规范
+CODE_LEARNING_PROMPT = """你是 {role_name}. {description}
+
+你的任务: 深度学习用户提供的代码仓库, 输出可被下游 outline / content_filler / reviewer 精确引用的结构化摘要.
+
+# 报告类型与学习侧重
+当前报告类型: {report_type}
+学习侧重维度:
+- architecture (技术架构): 依赖图 / 调用链 / 分层模式 / 设计模式 / 部署拓扑 / 数据流
+- design (概要设计): 模块划分 / 接口契约 / 核心流程 / 异常处理 / 数据模型
+- requirements (需求): 功能边界 / 用户故事 / 验收标准 / 业务流程
+- testcase (测试用例): 可测试点 / 边界条件 / 异常路径 / 测试覆盖盲区
+- optimization (系统优化): 性能瓶颈 / 资源消耗 / 扩展性限制 / 优化机会
+- performance (性能分析): 热点函数 / 时间复杂度 / 内存分配 / IO 模式
+- defect (系统缺陷): 异常处理 / 错误传播 / 资源泄漏 / 并发隐患
+- api_doc (API 文档): 公开接口 / 请求响应模型 / 认证授权 / 错误码 / 版本治理
 
 # 文件索引
-
 {file_index}
 
 # 关键文件内容
-
 {file_contents}
 
-# 任务要求
-1. 提炼代码仓库的架构特征、技术栈、模块组织、关键类与函数
-2. 识别数据流、控制流、依赖关系
-3. 提取与 {report_type} 文档撰写相关的关键信息
-4. 输出结构化的代码学习摘要, 长度控制在 5000 字以内
+# 工作原则
+1. 所有引用必须带「文件路径:行号」精确坐标 (如 src/main.py:42)
+2. 区分「确定性事实(来自代码)」与「推测(标注 confidence: low/medium/high)」
+3. 优先依赖符号签名 (类/函数/方法) 推断架构, 只在必要时引用完整代码块
+4. 识别入口点 / 核心模块 / 关键依赖 / 数据流 / 控制流 / 设计模式
 
-# 输出格式
-Markdown 格式, 包含以下章节:
-## 项目概述
-## 技术栈
-## 模块结构
-## 核心组件
-## 数据流
-## 关键发现
+# 输出要求
+长度控制在 20000 字以内, 必须覆盖后续文档撰写所需的全部信息.
+
+# 输出格式 (严格 JSON, 不要 markdown 代码块)
+{{
+  "summary": "Markdown 格式的整体摘要, 含项目概述/技术栈/架构模式/核心模块/数据流/关键发现 6 个二级章节, 每个事实带文件路径:行号引用",
+  "key_modules": [
+    {{"name": "模块名", "path": "src/xxx/yyy.py", "responsibility": "职责描述", "key_symbols": ["函数/类名"], "confidence": "high"}}
+  ],
+  "dependencies": [
+    {{"from": "模块A", "to": "模块B", "type": "import|call|inherit", "evidence": "src/a.py:10"}}
+  ],
+  "architecture_notes": "架构笔记: 设计模式 / 数据流 / 关键约定 / 演进建议, Markdown 格式, 带文件路径:行号引用"
+}}
 """
 
 
@@ -101,18 +121,30 @@ OUTLINE_REFINE_PROMPT = """你是 {role_name}. {description}
 
 # ===== 任务三：内容填充 =====
 # 调用方: agents.docbot.content_filler.ContentFillerD.fill_chapter()
-# format() kwargs: chapter_title / chapter_sections / key_points / language / code_summary / rag_context
-# 输出: Markdown 文本
+# format() kwargs: chapter_title / chapter_purpose / chapter_sections / key_points / language / code_summary / rag_context / chapter_example
+# 输出: Markdown 文本 (单章节)
 CONTENT_FILL_PROMPT = """你是技术文档撰写专家, 正在填充以下章节的详细内容.
+
+# 重要约束 (章节隔离)
+1. 仅生成本章节内容, 不要撰写其他章节的内容
+2. 不要在文末过渡到下一章节 (如"下一章我们将讨论...")
+3. 不要生成目录, 目录由合并阶段统一生成
+4. 章节内容必须自包含完整, 不依赖其他章节上下文
 
 # 章节标题
 {chapter_title}
+
+# 章节目的
+{chapter_purpose}
 
 # 章节小节
 {chapter_sections}
 
 # 关键点
 {key_points}
+
+# 章节示例模板 (参考格式, 不要照抄内容)
+{chapter_example}
 
 # 代码仓库学习摘要 (节选)
 {code_summary}
@@ -125,12 +157,25 @@ CONTENT_FILL_PROMPT = """你是技术文档撰写专家, 正在填充以下章�
 
 # 任务要求
 1. 严格按章节要点展开内容, 每节 300-800 字
-2. 引用代码仓库的实际文件路径、类名、函数名作为佐证
-3. 使用 Markdown 格式, 含表格、代码块、PlantUML 图 (如适用)
+2. 引用代码仓库的实际文件路径、类名、函数名作为佐证 (格式: src/xxx.py:行号)
+3. 使用 Markdown 格式, 含表格、代码块
 4. 章节总长度 2000-5000 字
+5. 仅使用与本章节关键点相关的 RAG 检索结果, 忽略明显属于其他章节的内容
+
+# 图表策略 (核心约束, 必须遵守)
+1. 禁止输出 PlantUML 代码块 (```plantuml 或 @startuml), 系统不支持 PlantUML 渲染服务, 会触发 "Diagram server error (HTTP 400)"
+2. 禁止输出 Mermaid 代码块 (```mermaid), 同样会触发渲染错误
+3. 禁止在正文中输出任何 SVG/HTML 图表代码, 配图由系统自动生成 SVG 矢量图并直接内嵌文档
+4. 如需表达架构/流程/拓扑等图形, 用文字描述 + Markdown 表格替代, 系统会根据章节标题自动生成 SVG 配图
 
 # 输出格式
-Markdown 文本, 以 `## 章节标题` 开头
+Markdown 文本, 严格遵循以下约束:
+1. 首行必须为 `## 章节标题` (二级标题, 严禁添加任何序号前缀, 如 "1."/"1.1"/"(1)"/"1、"等, 序号由合并阶段统一添加)
+2. 章节正文使用 `###` 及以下层级 (三级/四级标题), 禁止用 `##` 作为子标题
+3. `###` 和 `####` 子标题严禁添加任何序号前缀 (如 "1.1"/"1.1.1"/"(1)"等), 序号由合并阶段统一添加
+4. ADR (架构决策记录) 的子字段 (背景/决策/状态/后果等) 必须用 `###` 或 `####`, 禁止用 `##`
+5. 不要包含其他章节的内容或标题
+6. 不要在文末过渡到下一章节
 """
 
 
@@ -165,6 +210,14 @@ REVIEW_PROMPT = """你是技术文档评审专家, 正在评审以下章节内�
 4. 结构: 是否逻辑清晰、层次分明
 5. 语言: 是否通顺、专业
 
+# 修订约束 (核心, 必须遵守)
+1. 修订时不得添加或修改标题的序号前缀 (如 "1."/"1.1"/"(1)"/"1、"等), 序号由合并阶段统一添加
+2. 保留原内容的 ## / ### / #### 标题层级, 不得升级或降级标题层级
+3. 禁止在修订内容中输出 PlantUML 代码块 (```plantuml 或 @startuml), 会触发 "Diagram server error (HTTP 400)"
+4. 禁止在修订内容中输出 Mermaid 代码块 (```mermaid)
+5. 禁止在修订内容中输出 SVG/HTML 图表代码, 配图由系统自动生成
+6. 如原内容含 PlantUML/Mermaid 代码块, 修订时必须移除, 改用文字描述 + Markdown 表格替代
+
 # 任务要求
 1. 给出 needs_revision=true/false
 2. 如果需要修订, 给出具体修改建议 (review_notes)
@@ -185,37 +238,45 @@ REVIEW_PROMPT = """你是技术文档评审专家, 正在评审以下章节内�
 # 输出: Markdown 文本
 MERGE_PROMPT = """你是技术文档合并专家, 正在合并 {report_type} 类型文档的所有章节.
 
+# 关键约束 (章节完整性)
+1. 必须保留所有 {chapter_count} 个章节, 不得删除或合并任何章节
+2. 输出文档必须包含 {chapter_count} 个二级标题 (## 章节), 与输入章节数一致
+3. 每个章节的内容必须完整保留, 不得截断或省略
+4. 输入内容中 `---` 是章节分隔符, 每段是一个独立章节
+
 # 章节数量
 {chapter_count}
 
-# 待合并内容
+# 待合并内容 (章节之间用 --- 分隔)
 {all_content}
 
 # 目标语言
 {language}
 
 # 任务要求
-1. 按章节顺序合并
-2. 去除跨章节重复内容 (保留更详细版本)
+1. 按章节顺序合并, 保留所有 {chapter_count} 个章节标题
+2. 仅去除章节内的明显重复 (如同一表格出现两次), 不得跨章节去重
 3. 统一术语、风格、引用格式
-4. 添加章节间的过渡段落
-5. 生成完整文档 (含目录、章节编号)
+4. 保持章节标题层级一致 (## 章节)
+5. 不要生成目录, 目录由系统单独生成
+6. 不要添加文档总标题, 直接从第一个章节开始
 
 # 输出格式
-完整 Markdown 文档, 以 `# 文档标题` 开头, 含目录 + 各章节
+完整 Markdown 文档, 从第一个 `## 章节标题` 开始, 依次包含所有 {chapter_count} 个章节
 """
 
 
 # ===== 任务六：终审 =====
 # 调用方: agents.docbot.final_reviewer.FinalReviewerG.finalize_single_report()
-# format() kwargs: role_name / description / report_type / language / merged_content / code_summary
-# 输出: JSON {"title": str, "summary": str, "content_md": str}
+# format() kwargs: role_name / description / report_type / language / sections_summary / code_summary
+# 输出: JSON {"title": str, "summary": str, "terminology_suggestions": list, "duplicate_chapters": list}
+# (content_md 由调用方从 merged 原样透传 + 术语替换, 不经 LLM 生成, 避免截断)
 FINAL_REVIEW_PROMPT = """你是 {role_name}. {description}
 
-请对以下 {report_type} 类型合并后的文档做最终评审与定稿.
+请对以下 {report_type} 类型合并后的文档进行终审, 生成标题、摘要、术语统一建议和重复章节标记.
 
-# 合并后内容
-{merged_content}
+# 章节摘要 (每章节前 500 字符, 完整内容由系统保留)
+{sections_summary}
 
 # 代码仓库学习摘要 (节选)
 {code_summary}
@@ -224,16 +285,19 @@ FINAL_REVIEW_PROMPT = """你是 {role_name}. {description}
 {language}
 
 # 任务要求
-1. 检查整体一致性 (术语、命名、引用)
-2. 修复格式问题 (标题层级、列表、代码块、表格)
-3. 生成 200 字以内的文档摘要
-4. 生成 200 字以内的文档标题 (如原标题不合适)
+1. 基于章节摘要内容, 生成 200 字以内的文档标题 (体现文档类型与核心主题)
+2. 生成 200 字以内的文档摘要, 概括文档核心内容
+3. 识别章节间不一致的术语 (同一概念用不同名称), 给出统一建议
+4. 识别内容高度重复的章节编号 (供参考, 系统不会自动删除)
 
 # 输出格式 (严格 JSON, 不要 markdown 代码块)
 {{
   "title": "文档标题",
   "summary": "200 字以内摘要",
-  "content_md": "最终定稿 Markdown 内容"
+  "terminology_suggestions": [
+    {{"from": "原始术语", "to": "统一术语", "reason": "统一原因"}}
+  ],
+  "duplicate_chapters": [1, 3]
 }}
 """
 

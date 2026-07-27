@@ -169,6 +169,6 @@ output_format:
   default_language: zh
   default_format: markdown
   chapter_numbering: "1, 1.1, 1.1.1"
-  diagrams: 流程图/状态机图 (PlantUML 或代码块)
+  diagrams: SVG (由系统自动生成并内嵌, 禁止 PlantUML/Mermaid)
   tables: Markdown 表格
   to_word: pandoc 本文件 -o 输出.docx --toc --toc-depth=3

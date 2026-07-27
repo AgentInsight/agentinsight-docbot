@@ -57,6 +57,14 @@ class CoordinatorA:
     async def run(self, state: dict, *, settings: Any | None = None) -> dict:
         """执行协调入口逻辑.
 
+        支持两种入口:
+        1. routes.py 预解析入口: state 已含 repo_id/report_types/report_format/language
+           (routes.py _parse_docbot_instruction 已校验), messages 可能为空
+        2. 原始 messages 入口: state.messages 非空, 含 JSON 指令字符串
+
+        优先使用 state 中已注入的字段 (入口1), 避免重复解析;
+        state 中无 repo_id 时降级从 messages 解析 (入口2).
+
         Args:
             state: 顶层 DocbotState (dict 形式)
             settings: Settings 实例 (可选, 优先于构造时注入)
@@ -76,37 +84,44 @@ class CoordinatorA:
             session_id=state.get("session_id"),
             user_id=state.get("user_id"),
         ) as span:
-            messages = state.get("messages") or []
-            if not messages:
-                error = "empty_messages"
-                span.update(output={"error": error})
-                return {"errors": [error]}
+            # 入口1: routes.py 预解析, state 已含 repo_id/report_types
+            repo_id = state.get("repo_id", "")
+            report_types = state.get("report_types", [])
+            report_format = state.get("report_format", "markdown")
+            language = state.get("language", "zh")
 
-            last_message = messages[-1]
-            content = self._extract_content(last_message)
+            # 入口2: state 无 repo_id 时从 messages 解析 JSON 指令
+            if not repo_id:
+                messages = state.get("messages") or []
+                if not messages:
+                    error = "empty_messages"
+                    span.update(output={"error": error})
+                    return {"errors": [error]}
 
-            try:
-                instruction = json.loads(content)
-            except (json.JSONDecodeError, TypeError) as e:
-                error = f"invalid_instruction: {e}"
-                span.update(output={"error": error})
-                return {"errors": [error]}
+                last_message = messages[-1]
+                content = self._extract_content(last_message)
 
-            if not isinstance(instruction, dict):
-                error = "instruction_not_dict"
-                span.update(output={"error": error})
-                return {"errors": [error]}
+                try:
+                    instruction = json.loads(content)
+                except (json.JSONDecodeError, TypeError) as e:
+                    error = f"invalid_instruction: {e}"
+                    span.update(output={"error": error})
+                    return {"errors": [error]}
 
-            if instruction.get("action") != "generate_docs":
-                error = f"unsupported_action: {instruction.get('action')}"
-                span.update(output={"error": error})
-                return {"errors": [error]}
+                if not isinstance(instruction, dict):
+                    error = "instruction_not_dict"
+                    span.update(output={"error": error})
+                    return {"errors": [error]}
 
-            # 校验必填字段
-            repo_id = instruction.get("repo_id")
-            report_types = instruction.get("report_types", [])
-            report_format = instruction.get("report_format", "markdown")
-            language = instruction.get("language", "zh")
+                if instruction.get("action") != "generate_docs":
+                    error = f"unsupported_action: {instruction.get('action')}"
+                    span.update(output={"error": error})
+                    return {"errors": [error]}
+
+                repo_id = instruction.get("repo_id", "")
+                report_types = instruction.get("report_types", [])
+                report_format = instruction.get("report_format", "markdown")
+                language = instruction.get("language", "zh")
 
             errors: list[str] = []
             if not repo_id or not isinstance(repo_id, str):

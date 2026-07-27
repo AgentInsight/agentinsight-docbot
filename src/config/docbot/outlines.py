@@ -45,7 +45,7 @@ class OutlineChapter(BaseModel):
     purpose: str = Field(default="", description="章节目的 (一句话)")
     sections: list[str] = Field(default_factory=list, description="子章节标题列表")
     key_points: list[str] = Field(default_factory=list, description="章节要点 (3-7 条)")
-    example: str = Field(default="", description="示例 / 模板 (PlantUML / 表格 / 代码块)")
+    example: str = Field(default="", description="示例 / 模板 (Markdown 表格 / 代码块, 禁止 PlantUML)")
 
     @field_validator("title")
     @classmethod

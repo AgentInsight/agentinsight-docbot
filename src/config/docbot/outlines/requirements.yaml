@@ -33,19 +33,16 @@ chapters:
     key_points:
       - 产品定位、价值主张、北极星指标
       - Persona 矩阵（角色/诉求/痛点）
-      - 用户旅程与业务流程 PlantUML 活动图
+      - 用户旅程与业务流程 (由系统自动生成 SVG 活动图内嵌)
       - 假设与依赖（§9 验证）
       - 利益相关方矩阵
     example: |
-      ```plantuml
-      @startuml
-      title <核心业务流程>
-      start
-      :<用户动作 1>;
-      :<系统响应 1>;
-      stop
-      @enduml
-      ```
+      ## 核心业务流程
+      | 步骤 | 参与方 | 动作 | 系统响应 |
+      |------|--------|------|----------|
+      | 1 | 用户 | <用户动作 1> | <系统响应 1> |
+      | 2 | 系统 | 处理请求 | 返回结果 |
+      说明: 系统会根据本章节标题自动生成 SVG 流程图并内嵌, 正文不要输出 PlantUML/Mermaid 代码。
 
   - idx: 3
     title: 功能需求
@@ -56,7 +53,7 @@ chapters:
       - 功能模板（故事/主流程/AC/规则/NFR）
       - 用户故事地图（旅程×优先级）
       - 业务规则清单（关联 FR）
-      - 用例图 PlantUML
+      - 用例图 (由系统自动生成 SVG 内嵌)
     example: |
       ```markdown
       ### FR-NNN <功能名>
@@ -106,13 +103,12 @@ chapters:
       - 数据质量（完整/准确/时效/一致）
       - 数据埋点（事件/属性/用途）
     example: |
-      ```plantuml
-      @startuml
-      entity User
-      entity Order
-      User ||--o{ Order
-      @enduml
-      ```
+      ## 数据模型 (ER 概念)
+      | 实体 | 字段 | 类型 | 关系 |
+      |------|------|------|------|
+      | User | id | PK | 1:N → Order |
+      | Order | id | PK | N:1 → User |
+      说明: 系统会根据本章节标题自动生成 SVG ER 图并内嵌, 正文不要输出 PlantUML/Mermaid 代码。
 
   - idx: 7
     title: 约束条件
@@ -170,6 +166,6 @@ output_format:
   default_language: zh
   default_format: markdown
   chapter_numbering: "1, 1.1, 1.1.1"
-  diagrams: PlantUML (用例图/活动图/ER 图)
+  diagrams: SVG (由系统自动生成并内嵌, 禁止 PlantUML/Mermaid)
   tables: Markdown 表格
   to_word: pandoc 本文件 -o 输出.docx --toc --toc-depth=3

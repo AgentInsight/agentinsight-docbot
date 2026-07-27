@@ -53,18 +53,15 @@ ENV LANG=C.UTF-8 \
 WORKDIR /app
 
 # 离线安装运行时系统 .deb (含 libcairo2/libpango/fonts-noto-cjk/git 等)
-# 预下载 .deb 到 packages/debs/ (宿主机 apt-get download 或 docker cp from temp container)
+# 预下载 .deb 到 packages/debs/ (宿主机通过 prepare-debs-packages.ps1 脚本预下载)
 # 任务1: 需预下载中文字体 .deb 到 packages/debs/ (PDF/DOCX 报告中文显示):
 #   fonts-noto-cjk, fonts-noto-cjk-extra, fonts-wqy-zenhei, fonts-wqy-microhei
-#   预下载命令 (宿主机执行, 需联网):
-#   apt-get download fonts-noto-cjk fonts-noto-cjk-extra fonts-wqy-zenhei fonts-wqy-microhei
-#   或: docker run --rm -v $PWD/packages/debs:/out python:3.12-slim bash -c \
-#       "apt-get update && apt-get install -y --download-only fonts-noto-cjk fonts-noto-cjk-extra fonts-wqy-zenhei fonts-wqy-microhei && cp /var/cache/apt/archives/*.deb /out/"
 # 任务 E03: 需预下载 git .deb 到 packages/debs/ (GitMCPAdapter 直接调用 git 命令):
-#   预下载命令 (宿主机执行, 需联网): apt-get download git git-man liberror-perl perl-modules-5.36
+#   git, git-man, liberror-perl, perl, libperl5.40, perl-modules-5.40, libgdbm-compat4t64
 # docbot 还需运行时共享库 (WeasyPrint/lxml/psycopg 依赖):
 #   libpango-1.0-0, libpangocairo-1.0-0, libcairo2, libgdk-pixbuf-2.0-0, libxml2, libxslt1.1,
 #   libpq5, fonts-dejavu-core, ca-certificates, curl, gnupg, openssh-client
+# 预下载脚本 (宿主机执行, 需联网): scripts/prepare-debs-packages.ps1
 COPY packages/debs/ /tmp/debs/
 # 循环 dpkg -i 解决依赖顺序 (离线安装标准技巧)
 RUN dpkg -i /tmp/debs/*.deb 2>/dev/null; \
@@ -76,12 +73,10 @@ RUN dpkg -i /tmp/debs/*.deb 2>/dev/null; \
         echo "[WARNING] 中文字体未安装 (fonts-noto-cjk/fonts-wqy-*), PDF/DOCX 报告将乱码. 请预下载字体 .deb 到 packages/debs/"; \
     fi; \
     # E03: 验证 git 已安装 (GitMCPAdapter 调用 git 命令: clone/pull/ls-remote/grep/log)
-    # 若预下载的 .deb 中不含 git, 使用 apt-get fallback 安装 (构建时联网)
+    # 离线模式硬约束: 禁止 apt-get fallback 联网下载, 缺失时仅警告, 不阻断构建
     if ! command -v git >/dev/null 2>&1; then \
-        echo "[git] 预下载 .deb 中未找到 git, 使用 apt-get fallback 安装"; \
-        apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*; \
-    fi; \
-    git --version
+        echo "[WARNING] git 未安装 (GitMCPAdapter 将不可用). 请预下载 git .deb 到 packages/debs/ (运行 scripts/prepare-debs-packages.ps1)"; \
+    fi
 
 # 离线安装 Node.js 22 LTS + 预装 MCP npm 包
 # 预下载 Node.js 二进制到 packages/tools/nodejs/, npm 全局包到 packages/tools/npm-pkgs/

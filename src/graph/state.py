@@ -2,8 +2,9 @@
 
 设计约束 (见 docs/DESIGN_AGENT.md 第 2 章):
 - State 必须为 TypedDict; 跨节点共享字段用 Annotated[T, reducer]
-- 消息流用 add_messages reducer; report_tasks / errors / final_reports 用 operator.add 累积
-- iteration_count / revision_count / content_cache_keys / reviewed_cache_keys 用 operator.add
+- 消息流用 add_messages reducer; errors / content_cache_keys / reviewed_cache_keys 用 operator.add 累积
+- report_tasks / final_reports 用覆盖语义 (非 operator.add), 避免跨请求累积
+- iteration_count / revision_count 用 operator.add
 - 节点不应原地修改 State, 应返回 delta dict 由 reducer 合并
 
 import 路径约定 (见任务描述第 6 条):
@@ -44,13 +45,13 @@ class DocbotState(TypedDict):
     # 含 repo_url / default_branch / clone_depth / auth_type / token / username / password / ssh_key / ssh_passphrase
     _repo_config: dict
 
-    # 派发结果 (spawn_b_tasks 写入; operator.add 累积各 B 子图产物)
+    # 派发结果 (spawn_b_tasks 写入; 覆盖语义, 避免跨请求累积导致重复生成)
     # 每项: {report_type, report_id, final_cache_key, title, summary, image_svg, download_urls}
-    report_tasks: Annotated[list[dict], operator.add]
+    report_tasks: list[dict]
 
-    # 终审结果 (final_reviewer_g 写入; operator.add 累积)
+    # 终审结果 (final_reviewer_g / save_reports 写入; 覆盖语义, 避免跨请求累积)
     # 每项: {report_id, title, summary, download_urls, image_svg, content_md}
-    final_reports: Annotated[list[dict], operator.add]
+    final_reports: list[dict]
 
     # 错误累积 (operator.add; 节点失败时附加错误信息)
     errors: Annotated[list[str], operator.add]
@@ -84,15 +85,16 @@ class ReportTaskState(TypedDict):
 
     # 缓存键 (state 仅存键, 避免膨胀; 实际内容存 Redis)
     code_learning_cache_key: str  # 任务一产物
-    outline_cache_key: str  # 任务二产物
+    outline_cache_key: str  # 任务二产物 (纲要细化已移除, 保留字段兼容)
     content_cache_keys: Annotated[list[str], operator.add]  # 任务三产物 (按章节)
     reviewed_cache_keys: Annotated[list[str], operator.add]  # 任务四产物 (按章节)
     merged_cache_key: str  # 任务五产物
     final_cache_key: str  # 任务六产物
 
     # 章节迭代控制
-    current_chapter_idx: int  # 当前处理章节索引 (0-based)
-    chapters: list[dict]  # [{idx, title, sections: [str], key_points: [str]}]
+    current_chapter_idx: int  # D 填充当前章节索引 (0-based)
+    review_idx: int  # E 评审当前章节索引 (0-based, 独立于 current_chapter_idx, 避免索引错位)
+    chapters: list[dict]  # [{idx, title, purpose, sections: [str], key_points: [str], example: str}]
     max_revisions_per_chapter: int  # 默认 3 (D-E 修订循环硬上限)
     revision_count: Annotated[int, operator.add]  # 当前章节修订次数累积
 

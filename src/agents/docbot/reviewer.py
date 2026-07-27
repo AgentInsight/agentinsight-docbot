@@ -2,7 +2,7 @@
 
 职责 (见 docs/DESIGN_AGENT.md 第 4.5 节与第 7.4 节):
 1. 读取 content_cache_keys[current_chapter_idx - 1] (D 填充的内容)
-2. SMART LLM 评审 (覆盖度 / 准确性 / 代码路径引用 / 完整性)
+2. FAST LLM 评审 (覆盖度 / 准确性 / 代码路径引用 / 完整性)
 3. 输出评审建议 + 修订后的内容
 4. 写入 reviewed_cache_keys
 5. 与 D 形成修订循环 (max_revisions_per_chapter=3)
@@ -26,7 +26,7 @@ class ReviewerE:
     """子智能体 E: 评审.
 
     节点函数 e_review_node 调用本类 review_chapter() 方法.
-    使用 SMART LLM 评审 D 填充的章节内容.
+    使用 FAST LLM 评审 D 填充的章节内容 (单次修订, route_after_e 不返回 'revise').
     与 D 形成修订循环, 通过 revision_count + max_revisions_per_chapter 控制硬上限.
     """
 
@@ -120,15 +120,42 @@ class ReviewerE:
                 language=language,
             )
 
-            # 3. SMART LLM 评审
+            # 3. SMART LLM 评审 (单次修订, route_after_e 不返回 'revise', 无 D-E 循环)
+            # 用 SMART tier (deepseek-v4-flash) 取代 FAST tier (glm-4-flash):
+            # - ZHIPU_API_KEY 无效时 FAST tier 认证失败, 降级链耗尽抛异常导致子图失败
+            # - graph_total_timeout 已增至 1800s, SMART tier 12 章节评审时间充足
+            # - 评审输出 JSON (needs_revision/review_notes/revised_content), SMART 质量更优
             messages = [{"role": "user", "content": prompt}]
-            response = await self.llm.achat(
-                messages,
-                tier=LLMTier.SMART,
-                session_id=llm_session_id,
-                span_name=f"docbot.review.{report_type}.{chapter_idx}",
-                step="review",
-            )
+            # 捕获 LLM 调用异常 (认证失败/降级链耗尽等), 失败时降级不修订,
+            # 避免 e_review 节点抛异常导致整个子图失败 (success_reports 为空).
+            try:
+                response = await self.llm.achat(
+                    messages,
+                    tier=LLMTier.SMART,
+                    session_id=llm_session_id,
+                    span_name=f"docbot.review.{report_type}.{chapter_idx}",
+                    step="review",
+                )
+            except Exception as llm_err:  # noqa: BLE001
+                logger.warning(
+                    "章节 %s LLM 评审调用失败 (降级不修订, 不阻断子图): %s",
+                    chapter_idx,
+                    llm_err,
+                )
+                span.update(
+                    metadata={
+                        "step": "review",
+                        "llm_error": str(llm_err)[:200],
+                        "degraded": True,
+                    }
+                )
+                return {
+                    "chapter_idx": chapter_idx,
+                    "content_md": content_md,  # 原内容不修订
+                    "review_notes": f"LLM 评审调用失败, 跳过修订: {llm_err}",
+                    "needs_revision": False,
+                    "image_svgs": content.get("image_svgs", []) if isinstance(content, dict) else [],
+                }
 
             # 4. 解析 JSON 输出 (失败降级不修订)
             review = self._parse_review(response.content, content_md)

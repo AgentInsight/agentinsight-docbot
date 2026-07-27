@@ -4,15 +4,23 @@
 1. 通过 GitMCPAdapter 克隆 / 拉取仓库 (复用 skills.docbot.repo_loader.clone_repo)
 2. 构建文件索引 (复用 skills.docbot.repo_loader.build_file_index)
 3. 选取关键文件并读取内容 (复用 select_key_files + read_files)
-4. STRATEGIC LLM 学习, 输出结构化摘要: {summary, file_index, key_modules, dependencies, architecture_notes}
+4. STRATEGIC LLM 学习, 输出结构化 JSON: {summary, key_modules, dependencies, architecture_notes}
 5. 写入 Redis 缓存 (由节点函数 c_code_learning_node 负责, 本技能返回 dict)
+
+优化 (参考业界开源智能体):
+- 注入 persona (role_name / description) 让 LLM 从对应角色视角学习代码
+- report_type 差异化学习侧重 (架构/设计/需求/测试/优化/性能/缺陷/API)
+- 结构化 JSON 输出, 与下游 outline_refiner / content_filler 期望字段对齐
+- 要求 LLM 标注文件路径:行号引用, 供下游精确引用代码
 
 import 路径约定: 用绝对导入.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from typing import Any
 
 from src.llm.client import LLMClient, LLMTier, get_llm_client
@@ -27,7 +35,7 @@ from src.skills.docbot.repo_loader import (
 logger = logging.getLogger(__name__)
 
 # 代码学习 prompt 模板缺失时的兜底
-_DEFAULT_PROMPT = """你是 {report_type} 类型技术文档的代码学习专家, 请深度学习以下代码仓库并输出结构化摘要.
+_DEFAULT_PROMPT = """你是 {report_type} 类型技术文档的代码学习专家. 请深度学习以下代码仓库并输出结构化摘要.
 
 ## 文件索引
 
@@ -37,13 +45,13 @@ _DEFAULT_PROMPT = """你是 {report_type} 类型技术文档的代码学习专�
 
 {file_contents}
 
-## 输出要求
-
-输出结构化摘要, 包含:
-1. 项目概览 (技术栈 / 架构模式 / 主要模块)
-2. 关键模块说明 (模块职责 / 入口点)
-3. 依赖关系 (内部模块间 + 外部依赖)
-4. 架构笔记 (设计模式 / 数据流 / 关键约定)
+## 输出要求 (严格 JSON, 不要 markdown 代码块)
+{{
+  "summary": "Markdown 格式的整体摘要",
+  "key_modules": [{{"name": "模块名", "path": "路径", "responsibility": "职责"}}],
+  "dependencies": [{{"from": "模块A", "to": "模块B", "type": "import"}}],
+  "architecture_notes": "架构笔记 Markdown"
+}}
 """
 
 
@@ -68,11 +76,11 @@ async def learn_code(
 
     Returns:
         {
-            "summary": str (LLM 输出的结构化摘要, 供后续任务引用),
+            "summary": str (LLM 输出的整体摘要, Markdown 格式),
             "file_index": dict,
-            "key_modules": list[str],
-            "dependencies": list[str],
-            "architecture_notes": str,
+            "key_modules": list[dict] (LLM 提取的模块列表, 含 name/path/responsibility),
+            "dependencies": list[dict] (LLM 提取的依赖列表, 含 from/to/type),
+            "architecture_notes": str (LLM 输出的架构笔记, Markdown 格式),
             "repo_path": str,
         }
     """
@@ -98,12 +106,15 @@ async def learn_code(
             }
         )
 
-        # 4. 加载提示词模板
+        # 4. 加载提示词模板 + persona
         prompt_template = _load_prompt_template()
+        role_name, description = _load_persona(report_type)
 
-        # 5. 构造 prompt
+        # 5. 构造 prompt (注入 persona + report_type + 文件索引 + 文件内容)
         prompt = prompt_template.format(
             report_type=report_type,
+            role_name=role_name,
+            description=description,
             file_index=file_index.get("summary", ""),
             file_contents=file_contents[:500_000],  # 截断防止超长
         )
@@ -119,19 +130,26 @@ async def learn_code(
             step="code_learning",
         )
 
-        # 7. 提取模块 + 依赖
-        key_modules = _extract_modules(file_index)
-        dependencies = _extract_dependencies(file_index)
+        # 7. 解析 LLM JSON 输出, 提取结构化字段
+        parsed = _parse_learning_response(response.content)
+        key_modules = parsed.get("key_modules", [])
+        if not key_modules:
+            # 降级: 从文件索引启发式提取
+            key_modules = _extract_modules_fallback(file_index)
+        dependencies = parsed.get("dependencies", [])
+        if not dependencies:
+            # 降级: 从文件索引提取依赖文件路径
+            dependencies = _extract_dependencies_fallback(file_index)
 
         learning_result = {
-            "summary": response.content,
+            "summary": parsed.get("summary", response.content),
             "file_index": file_index,
             "key_modules": key_modules,
             "dependencies": dependencies,
-            "architecture_notes": response.content,
+            "architecture_notes": parsed.get("architecture_notes", response.content),
             "repo_path": repo_path,
         }
-        span.update(output={"summary_length": len(response.content)})
+        span.update(output={"summary_length": len(learning_result["summary"])})
         return learning_result
 
 
@@ -156,10 +174,77 @@ def _load_prompt_template() -> str:
         return _DEFAULT_PROMPT
 
 
-def _extract_modules(file_index: dict) -> list[str]:
-    """从文件索引提取顶级模块列表."""
+def _load_persona(report_type: str) -> tuple[str, str]:
+    """加载报告类型对应的 persona (role_name, description).
+
+    失败时降级到通用 persona.
+    """
+    try:
+        from src.config.docbot.personas import DOCBOT_REPORT_PERSONAS
+
+        persona = DOCBOT_REPORT_PERSONAS.get(report_type, {})
+        role_name = persona.get("role_name", "技术文档专家")
+        description = persona.get("description", "生成结构完整的技术文档")
+        return role_name, description
+    except Exception as e:  # noqa: BLE001
+        logger.warning("加载 persona 失败 (降级通用): %s", e)
+        return "技术文档专家", "生成结构完整的技术文档"
+
+
+def _parse_learning_response(content: str) -> dict:
+    """解析 LLM 输出的 JSON 结构化摘要.
+
+    期望格式:
+    {
+        "summary": "Markdown 文本",
+        "key_modules": [{"name", "path", "responsibility", "key_symbols", "confidence"}],
+        "dependencies": [{"from", "to", "type", "evidence"}],
+        "architecture_notes": "Markdown 文本"
+    }
+
+    解析失败时降级: 把整个 content 作为 summary, 其他字段为空.
+    """
+    if not content:
+        return {}
+
+    # 尝试直接解析
+    try:
+        parsed = json.loads(content)
+        if isinstance(parsed, dict):
+            return parsed
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    # 尝试从 markdown 代码块中提取 JSON
+    json_block_pattern = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)
+    match = json_block_pattern.search(content)
+    if match:
+        try:
+            parsed = json.loads(match.group(1))
+            if isinstance(parsed, dict):
+                return parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    # 尝试提取第一个 { 到最后一个 } 之间的内容
+    first_brace = content.find("{")
+    last_brace = content.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        try:
+            parsed = json.loads(content[first_brace : last_brace + 1])
+            if isinstance(parsed, dict):
+                return parsed
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+    logger.warning("LLM 输出 JSON 解析失败, 降级为纯文本 summary")
+    return {"summary": content, "key_modules": [], "dependencies": [], "architecture_notes": content}
+
+
+def _extract_modules_fallback(file_index: dict) -> list[dict]:
+    """从文件索引启发式提取模块列表 (LLM 解析失败时降级用)."""
     files = file_index.get("files", []) if isinstance(file_index, dict) else []
-    modules: set[str] = set()
+    modules: dict[str, dict] = {}
     for f in files:
         if not isinstance(f, dict):
             continue
@@ -169,14 +254,21 @@ def _extract_modules(file_index: dict) -> list[str]:
             top = parts[0]
             # 排除明显非模块的目录 (src/ tests/ docs/ examples/)
             if top not in {"src", "tests", "test", "docs", "examples", "example"}:
-                modules.add(top)
-    return sorted(modules)
+                if top not in modules:
+                    modules[top] = {
+                        "name": top,
+                        "path": top,
+                        "responsibility": "",
+                        "key_symbols": [],
+                        "confidence": "low",
+                    }
+    return sorted(modules.values(), key=lambda m: m["name"])
 
 
-def _extract_dependencies(file_index: dict) -> list[str]:
-    """从文件索引提取依赖文件路径列表 (requirements.txt / package.json / go.mod 等)."""
+def _extract_dependencies_fallback(file_index: dict) -> list[dict]:
+    """从文件索引提取依赖文件列表 (LLM 解析失败时降级用)."""
     files = file_index.get("files", []) if isinstance(file_index, dict) else []
-    deps: list[str] = []
+    deps: list[dict] = []
     dep_names = {
         "requirements.txt",
         "package.json",
@@ -191,7 +283,12 @@ def _extract_dependencies(file_index: dict) -> list[str]:
             continue
         name = f.get("name", "")
         if name in dep_names:
-            deps.append(f.get("path", name))
+            deps.append({
+                "from": name,
+                "to": f.get("path", name),
+                "type": "dependency_file",
+                "evidence": f.get("path", name),
+            })
     return deps
 
 

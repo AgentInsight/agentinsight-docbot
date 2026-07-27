@@ -49,8 +49,10 @@ class Settings(BaseSettings):
     llm_timeout: int = 120  # LLM 调用超时 (秒); deepseek-v4-pro 报告生成需 60s+
     llm_max_retries: int = 2
     # graph.ainvoke 总超时 (秒, 防止节点卡死永久挂起)
-    # docbot 单次报告生成含多节点 LLM 调用 + RAG 检索 + 并发子图, 默认 600s (10 分钟)
-    graph_total_timeout: int = 600
+    # docbot 单次报告生成含多节点 LLM 调用 + RAG 检索 + 章节级语义去重 + 并发子图
+    # 12 章节架构文档: 12×D(SMART LLM~60s + dedup~5s) + 12×E(FAST LLM~15s) + F + G(SMART~60s)
+    # 实测峰值 ~960s, 留 2x 安全余量 → 1800s (30 分钟)
+    graph_total_timeout: int = 1800
     # LLM 响应缓存 (Redis)
     # 仅缓存 temperature=0 的成功响应; 异常/错误响应绝不缓存; 流式响应不缓存.
     llm_response_cache_enabled: bool = True
@@ -247,9 +249,11 @@ class Settings(BaseSettings):
     )
 
     # ========== 上下文压缩与去重参数 ==========
-    # WrittenContentCompressor 跨子主题去重阈值 (WrittenContentCompressor threshold=0.5)
-    # 去重使用 FastEmbed (bge-small-zh-v1.5, 512维), 阈值可能需重新校准.
-    written_content_similarity_threshold: float = 0.5
+    # WrittenContentCompressor 跨章节去重阈值
+    # 0.85 对齐 AIR 推荐值, 避免 docbot 章节间自然语义关联被误判为重复
+    # (architecture 文档的 "系统概述" / "架构原则" / "整体架构" 等章节有概念重叠,
+    #  阈值过低会导致正常章节被去重跳过, 破坏章节完整性)
+    written_content_similarity_threshold: float = 0.85
     # 递归分块参数 (chunk_size=1000 是 RecursiveCharacterTextSplitter 默认值)
     # 参数供 BM25Filter/WrittenContentCompressor 复用 recursive_split.
     embeddings_filter_chunk_size: int = 1000
@@ -327,6 +331,20 @@ class Settings(BaseSettings):
     mcp_git_args: str = '["mcp-server-git"]'
     mcp_filesystem_command: str = "npx"
     mcp_filesystem_args: str = '["-y", "@modelcontextprotocol/server-filesystem", "/tmp/repos"]'
+
+    # ========== 图像生成 (报告配图, 可选) ==========
+    # 默认启用报告配图; SVG 模式经 DeepSeek V4 Flash /chat/completions 生成 SVG 代码
+    # 留空 image_api_key 时复用 resolve_api_key 解析 (默认回退到 deepseek_api_key)
+    image_generation_enabled: bool = True
+    image_model: str = "deepseek/deepseek-v4-flash"
+    image_api_key: str | None = None
+    image_output_format: str = "svg"  # svg | url | b64 (svg 推荐, url/b64 为位图保留路径)
+    image_quality: str = "standard"  # 位图质量 (standard|hd), SVG 模式忽略
+    image_svg_temperature: float = 0.7
+    image_svg_max_tokens: int = 16384
+
+    # ========== 报告输出目录 (Publisher 生成 PDF/HTML 降级落盘) ==========
+    upload_dir: str = "/tmp/uploads"
 
     @field_validator("env")
     @classmethod
