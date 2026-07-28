@@ -353,18 +353,75 @@ CREATE OR REPLACE TRIGGER trg_mcp_configs_updated_at
 
 -- 预置系统 MCP 配置 (agent_id IS NULL, is_system = TRUE)
 -- 用户可通过 POST /v1/mcp/system/{config_id}/clone 克隆到自己的列表
--- 需 Key 的 MCP enabled=FALSE, 由用户填 Key 后测试启用
+-- 所有系统 MCP 默认禁用 (enabled=FALSE), 用户克隆后需填 Key 并测试通过才可启用
+--
+-- 幂等策略: 先删除所有系统 MCP, 再重新插入
+-- (系统 MCP 为预置模板, 用户克隆后变 is_system=FALSE, 不受此删除影响)
+DELETE FROM mcp_configs WHERE is_system = TRUE;
+
+-- 1. fetch (Python, uvx) - 网页抓取工具 (官方参考实现, 无需 Key)
 INSERT INTO mcp_configs (agent_id, user_id, name, server_url, transport_type, command, args, env_vars, enabled, is_system, description)
 SELECT NULL, NULL, 'fetch', NULL, 'stdio', 'uvx', '["mcp-server-fetch"]'::jsonb, NULL, FALSE, TRUE, 'MCP Fetch - 网页抓取工具 (无需 Key)'
 WHERE NOT EXISTS (SELECT 1 FROM mcp_configs WHERE name = 'fetch' AND is_system = TRUE);
 
-INSERT INTO mcp_configs (agent_id, user_id, name, server_url, transport_type, command, args, env_vars, enabled, is_system, description)
-SELECT NULL, NULL, 'filesystem', NULL, 'stdio', 'npx', '["-y", "@modelcontextprotocol/server-filesystem", "/tmp"]'::jsonb, NULL, FALSE, TRUE, 'MCP Filesystem - 文件系统工具 (需调整路径)'
-WHERE NOT EXISTS (SELECT 1 FROM mcp_configs WHERE name = 'filesystem' AND is_system = TRUE);
-
+-- 2. git (Python, uvx) - Git 仓库操作工具 (官方参考实现, 需调整路径)
 INSERT INTO mcp_configs (agent_id, user_id, name, server_url, transport_type, command, args, env_vars, enabled, is_system, description)
 SELECT NULL, NULL, 'git', NULL, 'stdio', 'uvx', '["mcp-server-git", "--repository", "/tmp/repo"]'::jsonb, NULL, FALSE, TRUE, 'MCP Git - Git 仓库操作工具 (需调整路径)'
 WHERE NOT EXISTS (SELECT 1 FROM mcp_configs WHERE name = 'git' AND is_system = TRUE);
+
+-- 3. clickhouse (Python, uvx) - ClickHouse 数据库查询工具
+INSERT INTO mcp_configs (agent_id, user_id, name, server_url, transport_type, command, args, env_vars, enabled, is_system, description)
+SELECT NULL, NULL, 'clickhouse', NULL, 'stdio', 'uvx', '["mcp-server-clickhouse"]'::jsonb,
+    '{"CLICKHOUSE_HOST": "", "CLICKHOUSE_USER": "", "CLICKHOUSE_PASSWORD": ""}'::jsonb,
+    FALSE, TRUE, 'MCP ClickHouse - ClickHouse 数据库查询工具 (需配置连接)'
+WHERE NOT EXISTS (SELECT 1 FROM mcp_configs WHERE name = 'clickhouse' AND is_system = TRUE);
+
+-- 4. confluence (TypeScript, npx) - Confluence 文档协作工具
+INSERT INTO mcp_configs (agent_id, user_id, name, server_url, transport_type, command, args, env_vars, enabled, is_system, description)
+SELECT NULL, NULL, 'confluence', NULL, 'stdio', 'npx', '["-y", "@modelcontextprotocol/server-confluence"]'::jsonb,
+    '{"CONFLUENCE_URL": "", "CONFLUENCE_PERSONAL_TOKEN": ""}'::jsonb,
+    FALSE, TRUE, 'MCP Confluence - Confluence 文档协作工具 (需配置 API Token)'
+WHERE NOT EXISTS (SELECT 1 FROM mcp_configs WHERE name = 'confluence' AND is_system = TRUE);
+
+-- 5. elasticsearch (Python, uvx) - Elasticsearch 搜索引擎工具
+INSERT INTO mcp_configs (agent_id, user_id, name, server_url, transport_type, command, args, env_vars, enabled, is_system, description)
+SELECT NULL, NULL, 'elasticsearch', NULL, 'stdio', 'uvx', '["mcp-server-elasticsearch"]'::jsonb,
+    '{"ELASTICSEARCH_URL": "", "ELASTICSEARCH_API_KEY": ""}'::jsonb,
+    FALSE, TRUE, 'MCP Elasticsearch - Elasticsearch 搜索引擎工具 (需配置连接)'
+WHERE NOT EXISTS (SELECT 1 FROM mcp_configs WHERE name = 'elasticsearch' AND is_system = TRUE);
+
+-- 6. github (TypeScript, npx) - GitHub 仓库管理工具 (官方参考实现)
+INSERT INTO mcp_configs (agent_id, user_id, name, server_url, transport_type, command, args, env_vars, enabled, is_system, description)
+SELECT NULL, NULL, 'github', NULL, 'stdio', 'npx', '["-y", "@modelcontextprotocol/server-github"]'::jsonb,
+    '{"GITHUB_PERSONAL_ACCESS_TOKEN": ""}'::jsonb,
+    FALSE, TRUE, 'MCP GitHub - GitHub 仓库管理工具 (需配置 Personal Access Token)'
+WHERE NOT EXISTS (SELECT 1 FROM mcp_configs WHERE name = 'github' AND is_system = TRUE);
+
+-- 7. google-drive (TypeScript, npx) - Google Drive 文件管理工具
+INSERT INTO mcp_configs (agent_id, user_id, name, server_url, transport_type, command, args, env_vars, enabled, is_system, description)
+SELECT NULL, NULL, 'google-drive', NULL, 'stdio', 'npx', '["-y", "@modelcontextprotocol/server-google-drive"]'::jsonb,
+    '{"GOOGLE_DRIVE_OAUTH_TOKEN": "", "GOOGLE_DRIVE_CLIENT_ID": "", "GOOGLE_DRIVE_CLIENT_SECRET": ""}'::jsonb,
+    FALSE, TRUE, 'MCP Google Drive - Google Drive 文件管理工具 (需配置 OAuth 凭据)'
+WHERE NOT EXISTS (SELECT 1 FROM mcp_configs WHERE name = 'google-drive' AND is_system = TRUE);
+
+-- 8. mongodb (Python, uvx) - MongoDB 数据库工具
+INSERT INTO mcp_configs (agent_id, user_id, name, server_url, transport_type, command, args, env_vars, enabled, is_system, description)
+SELECT NULL, NULL, 'mongodb', NULL, 'stdio', 'uvx', '["mcp-server-mongodb"]'::jsonb,
+    '{"MONGODB_URI": ""}'::jsonb,
+    FALSE, TRUE, 'MCP MongoDB - MongoDB 数据库工具 (需配置连接 URI)'
+WHERE NOT EXISTS (SELECT 1 FROM mcp_configs WHERE name = 'mongodb' AND is_system = TRUE);
+
+-- 9. notion (TypeScript, npx) - Notion 文档协作工具
+INSERT INTO mcp_configs (agent_id, user_id, name, server_url, transport_type, command, args, env_vars, enabled, is_system, description)
+SELECT NULL, NULL, 'notion', NULL, 'stdio', 'npx', '["-y", "@modelcontextprotocol/server-notion"]'::jsonb,
+    '{"NOTION_API_TOKEN": ""}'::jsonb,
+    FALSE, TRUE, 'MCP Notion - Notion 文档协作工具 (需配置 API Token)'
+WHERE NOT EXISTS (SELECT 1 FROM mcp_configs WHERE name = 'notion' AND is_system = TRUE);
+
+-- 10. wikipedia (Python, uvx) - 维基百科查询工具 (无需 Key)
+INSERT INTO mcp_configs (agent_id, user_id, name, server_url, transport_type, command, args, env_vars, enabled, is_system, description)
+SELECT NULL, NULL, 'wikipedia', NULL, 'stdio', 'uvx', '["mcp-server-wikipedia"]'::jsonb, NULL, FALSE, TRUE, 'MCP Wikipedia - 维基百科查询工具 (无需 Key)'
+WHERE NOT EXISTS (SELECT 1 FROM mcp_configs WHERE name = 'wikipedia' AND is_system = TRUE);
 
 -- ========== 初始化完成 ==========
 -- 注: 此处不再使用 'agentinsight-docbot' 字面量, agent_id 由各 Agent 在运行时动态写入

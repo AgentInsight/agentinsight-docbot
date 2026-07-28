@@ -2,7 +2,7 @@
 
 测试目标 (见 AGENTS.md 第 13 章关键测试用例 1):
 - 读取 scripts/init.sql 文本
-- 含 'mcp_configs' CREATE TABLE (系统 MCP 配置, 预置 fetch/filesystem/git)
+- 含 'mcp_configs' CREATE TABLE (系统 MCP 配置, 预置 10 个系统 MCP)
 - 含 'user_git_repos' CREATE TABLE
 - 含 'report_type_label' / 'report_summary' / 'report_image_svg'
 - 不含 'research_search_logs' / 'uploaded_files'
@@ -64,15 +64,30 @@ class TestInitSqlContent:
         assert "trg_mcp_configs_updated_at" in init_sql_content
 
     def test_mcp_configs_has_preset_system_configs(self, init_sql_content: str) -> None:
-        """验证预置了 3 个系统 MCP 配置 (fetch / filesystem / git)."""
-        # 预置 INSERT 语句应含这 3 个系统 MCP
-        assert "'fetch'" in init_sql_content
-        assert "'filesystem'" in init_sql_content
-        assert "'git'" in init_sql_content
+        """验证预置了 10 个系统 MCP 配置 (clickhouse/confluence/elasticsearch/fetch/git/github/google-drive/mongodb/notion/wikipedia)."""
+        # 预置 INSERT 语句应含这 10 个系统 MCP
+        for name in (
+            "clickhouse",
+            "confluence",
+            "elasticsearch",
+            "fetch",
+            "git",
+            "github",
+            "google-drive",
+            "mongodb",
+            "notion",
+            "wikipedia",
+        ):
+            assert f"'{name}'" in init_sql_content, f"init.sql 缺少系统 MCP: {name}"
+        # filesystem 已删除, 不应再出现为系统 MCP 预置
+        assert "'filesystem'" not in init_sql_content or (
+            "filesystem" in init_sql_content
+            and "MCP Filesystem" not in init_sql_content
+        )
         # 都应是 is_system = TRUE
-        # 统计 is_system = TRUE 的预置行 (至少 3 个)
-        assert init_sql_content.count("is_system = TRUE") >= 3 or (
-            init_sql_content.count("TRUE") >= 3
+        # 统计 is_system = TRUE 的预置行 (至少 10 个)
+        assert init_sql_content.count("is_system = TRUE") >= 10 or (
+            init_sql_content.count("TRUE") >= 10
         )
 
     def test_contains_report_type_label_column(self, init_sql_content: str) -> None:

@@ -158,9 +158,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # 失败不阻断启动 (仅告警), 后续调用方走降级路径
     await _start_mcp_subprocesses()
 
-    # PostgreSQL 业务表初始化由 postgres 容器启动时执行 (scripts/init.sql 挂载到 /docker-entrypoint-initdb.d/)
+    # 2. PostgreSQL 业务表初始化 (AGENTS.md 第 6 章核心约定)
+    # 执行 scripts/init.sql, 所有 DDL 幂等 (IF NOT EXISTS / CREATE OR REPLACE)
+    # 失败不阻断启动 (仅告警), depends_on service_healthy 已保证 Postgres 就绪
+    # 不推荐依赖 postgres 容器 /docker-entrypoint-initdb.d/ (仅首次启动执行, 后续不执行)
+    try:
+        from src.memory.db_initializer import init_database
 
-    # 2. 显式同步 ensure Qdrant 集合
+        await init_database(settings)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("PostgreSQL 业务表初始化失败 (不阻断启动): %s", e)
+
+    # 3. 显式同步 ensure Qdrant 集合
     # 必须同步等待完成, 避免新环境首请求竞态 (后台任务可能在集合未就绪时被查询)
     # 失败不阻断启动 (仅告警), 后续业务方法自保 _ensure_collection_once 兜底
     async def _ensure_qdrant_collection() -> None:
@@ -175,7 +184,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     await _ensure_qdrant_collection()
 
-    # 3. Embeddings 批量预热 (后台执行, 不阻塞启动)
+    # 4. Embeddings 批量预热 (后台执行, 不阻塞启动)
     # 触发 TEI 模型加载, 避免首次真实调用冷启动; 失败不阻断启动
     async def _warmup_embeddings() -> None:
         try:
@@ -187,7 +196,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     _create_background_task(_warmup_embeddings())
 
-    # 4. LangGraph docbot 图预热 (后台任务触发首次构建, 首次请求直接复用单例)
+    # 5. LangGraph docbot 图预热 (后台任务触发首次构建, 首次请求直接复用单例)
     # 复用 routes._get_graph() 全局单例 (懒加载), 后台触发首次构建; 失败不阻断启动
     async def _warmup_graph() -> None:
         try:
