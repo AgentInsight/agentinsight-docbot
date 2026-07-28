@@ -355,11 +355,23 @@ ALTER TABLE IF EXISTS mcp_configs ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT
 ALTER TABLE IF EXISTS mcp_configs ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE IF EXISTS mcp_configs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 ALTER TABLE IF EXISTS mcp_configs ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+-- 旧表约束修正: 旧版 mcp_configs 的 user_id 为 NOT NULL, 阻止系统 MCP 插入 (系统 MCP user_id IS NULL)
+-- DROP NOT NULL 幂等: 若已为 nullable 则 no-op, 若为 NOT NULL 则放宽 (PostgreSQL ≥9.6)
+-- 必须在 INSERT 系统 MCP 之前执行, 否则所有系统 MCP INSERT 都会失败
+ALTER TABLE IF EXISTS mcp_configs ALTER COLUMN user_id DROP NOT NULL;
+-- 旧表默认值修正: 旧版 enabled 默认为 TRUE (新装即启用, 不安全), 改为 FALSE (用户显式启用)
+-- SET DEFAULT 幂等: 重复执行无副作用
+ALTER TABLE IF EXISTS mcp_configs ALTER COLUMN enabled SET DEFAULT FALSE;
+-- 旧表版本列: 旧版有 version 列 (新版已移除), 保留不影响功能 (向后兼容)
+-- 不做 DROP COLUMN, 避免数据丢失
 -- 复合索引: 用户 MCP 查询 (agent_id + user_id + is_system = FALSE)
 CREATE INDEX IF NOT EXISTS idx_mcp_configs_agent_user ON mcp_configs(agent_id, user_id, is_system);
 -- 索引: 系统 MCP 查询 (agent_id IS NULL AND is_system = TRUE)
 CREATE INDEX IF NOT EXISTS idx_mcp_configs_system ON mcp_configs(is_system) WHERE is_system = TRUE;
--- 唯一索引: 同一用户下 MCP 配置名称不可重复 (系统 MCP 不受限)
+-- 唯一索引重建: 旧版索引无 WHERE 子句 (覆盖系统 MCP, 阻止同 name 系统配置共存)
+-- 新版仅约束用户 MCP (is_system = FALSE), 系统 MCP 不受唯一约束 (可重复 INSERT 兜底)
+-- DROP IF EXISTS 幂等: 不存在则 no-op, 存在则删除后重建
+DROP INDEX IF EXISTS idx_mcp_configs_unique_name;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mcp_configs_unique_name
     ON mcp_configs(COALESCE(agent_id, ''), COALESCE(user_id, ''), name) WHERE is_system = FALSE;
 -- 触发器: 自动维护 updated_at
