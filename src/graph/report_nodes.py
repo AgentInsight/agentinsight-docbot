@@ -85,6 +85,12 @@ async def c_code_learning_node(state: dict, settings: Any | None = None) -> dict
     report_type = state.get("report_type", "")
     llm_session_id = state.get("llm_session_id", "")
 
+    logger.info(
+        "c_code_learning 开始: report_type=%s, repo_id=%s, user_id=%s, "
+        "session_id=%s, llm_session_id=%s",
+        report_type, repo_id, user_id, session_id, llm_session_id,
+    )
+
     cache_key = build_cache_key(
         agent_id=agent_id,
         user_id=user_id,
@@ -102,23 +108,74 @@ async def c_code_learning_node(state: dict, settings: Any | None = None) -> dict
     # 仓库配置由 coordinator_a 从 DB 加载并解密后注入 state (按需下载机制, 任务3)
     repo_config = state.get("_repo_config")
     if not repo_config or not repo_config.get("repo_url"):
+        # 诊断: 详细记录缺失原因
+        config_type = type(repo_config).__name__ if repo_config else "None"
+        repo_url_val = repo_config.get("repo_url", "") if isinstance(repo_config, dict) else ""
+        config_keys = list(repo_config.keys()) if isinstance(repo_config, dict) else []
+        logger.error(
+            "c_code_learning 失败: missing_repo_config. report_type=%s, "
+            "repo_id=%s, config_type=%s, repo_url=%r, config_keys=%s. "
+            "请检查 coordinator_a_node 是否成功加载仓库配置.",
+            report_type, repo_id, config_type, repo_url_val, config_keys,
+        )
         return {"errors": ["missing_repo_config"]}
 
-    learning_result = await learn_code(
-        repo_config=repo_config,
-        repo_id=repo_id,
-        user_id=user_id,
-        report_type=report_type,
-        llm_session_id=llm_session_id,
-        settings=settings,
+    # 诊断: 记录 repo_config 关键字段 (脱敏, 不记录 token/password/ssh_key)
+    safe_config = {
+        "repo_url": repo_config.get("repo_url", ""),
+        "auth_type": repo_config.get("auth_type", "none"),
+        "default_branch": repo_config.get("default_branch", ""),
+        "clone_depth": repo_config.get("clone_depth", 0),
+        "has_token": bool(repo_config.get("token")),
+        "has_password": bool(repo_config.get("password")),
+        "has_ssh_key": bool(repo_config.get("ssh_key")),
+    }
+    logger.info("c_code_learning repo_config: %s", safe_config)
+
+    try:
+        learning_result = await learn_code(
+            repo_config=repo_config,
+            repo_id=repo_id,
+            user_id=user_id,
+            report_type=report_type,
+            llm_session_id=llm_session_id,
+            settings=settings,
+        )
+    except Exception as e:
+        logger.exception(
+            "c_code_learning learn_code 抛出异常: report_type=%s, repo_id=%s, "
+            "error=%s: %s",
+            report_type, repo_id, type(e).__name__, e,
+        )
+        return {"errors": [f"code_learning_failed: {type(e).__name__}: {e}"]}
+
+    # 诊断: 记录学习结果关键字段
+    logger.info(
+        "c_code_learning learn_code 完成: report_type=%s, summary_length=%d, "
+        "key_modules=%d, dependencies=%d, file_count=%d, repo_path=%s",
+        report_type,
+        len(learning_result.get("summary", "")),
+        len(learning_result.get("key_modules", [])),
+        len(learning_result.get("dependencies", [])),
+        learning_result.get("file_index", {}).get("file_count", 0),
+        learning_result.get("repo_path", ""),
     )
 
     # 写入 Redis 缓存 (JSON 序列化)
-    await write_cache(
-        cache_key,
-        json.dumps(learning_result, ensure_ascii=False),
-        settings=settings,
-    )
+    try:
+        await write_cache(
+            cache_key,
+            json.dumps(learning_result, ensure_ascii=False),
+            settings=settings,
+        )
+    except Exception as e:
+        logger.exception(
+            "c_code_learning write_cache 失败: cache_key=%s, error=%s: %s",
+            cache_key, type(e).__name__, e,
+        )
+        return {"errors": [f"write_cache_failed: {type(e).__name__}: {e}"]}
+
+    logger.info("c_code_learning 完成: cache_key=%s", cache_key)
     return {"code_learning_cache_key": cache_key}
 
 

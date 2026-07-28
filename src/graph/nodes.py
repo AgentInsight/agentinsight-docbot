@@ -91,8 +91,24 @@ async def spawn_b_tasks_node(state: dict, settings: Any | None = None) -> dict:
         if settings is not None:
             max_revisions_per_chapter = int(getattr(settings, "max_revisions_per_chapter", 3))
 
+        # 诊断日志: 派发前置状态
+        repo_config = state.get("_repo_config", {})
+        repo_url = repo_config.get("repo_url", "") if isinstance(repo_config, dict) else ""
+        logger.info(
+            "spawn_b_tasks 开始: report_types=%s, repo_id=%s, repo_url=%s, "
+            "user_id=%s, session_id=%s, max_concurrent=%d",
+            report_types, repo_id, repo_url, user_id, session_id, max_concurrent,
+        )
+        if not repo_url:
+            logger.error(
+                "spawn_b_tasks 严重: _repo_config 缺失或 repo_url 为空, "
+                "子图 c_code_learning_node 必将失败. repo_config 类型=%s",
+                type(repo_config).__name__,
+            )
+
         async def run_one(report_type: str) -> dict:
             async with semaphore:
+                logger.info("子图开始执行: report_type=%s, repo_id=%s", report_type, repo_id)
                 # 构造子图初始 state (ReportTaskState 全字段)
                 sub_state: ReportTaskState = {
                     "report_type": report_type,
@@ -124,8 +140,27 @@ async def spawn_b_tasks_node(state: dict, settings: Any | None = None) -> dict:
                 thread_id = f"{agent_id}:{session_id}:{report_type}"
                 config = {"configurable": {"thread_id": thread_id}}
                 subgraph = build_report_subgraph(settings)
-                result = await subgraph.ainvoke(sub_state, config=config)
-                return result if isinstance(result, dict) else {}
+                try:
+                    result = await subgraph.ainvoke(sub_state, config=config)
+                    result_dict = result if isinstance(result, dict) else {}
+                    logger.info(
+                        "子图执行完成: report_type=%s, final_cache_key=%s, report_id=%s, "
+                        "title=%s, chapters=%d, content_keys=%d, reviewed_keys=%d",
+                        report_type,
+                        result_dict.get("final_cache_key", ""),
+                        result_dict.get("report_id", ""),
+                        (result_dict.get("report_title", "") or "")[:50],
+                        len(result_dict.get("chapters", [])),
+                        len(result_dict.get("content_cache_keys", [])),
+                        len(result_dict.get("reviewed_cache_keys", [])),
+                    )
+                    return result_dict
+                except Exception as e:
+                    logger.exception(
+                        "子图执行抛出异常: report_type=%s, error=%s: %s",
+                        report_type, type(e).__name__, e,
+                    )
+                    raise
 
         # 并发派发, return_exceptions=True 防止单个失败拖垮全部
         tasks = [run_one(rt) for rt in report_types]
@@ -135,7 +170,16 @@ async def spawn_b_tasks_node(state: dict, settings: Any | None = None) -> dict:
         errors: list[str] = []
         for rt, r in zip(report_types, results, strict=True):
             if isinstance(r, Exception):
-                errors.append(f"report_type={rt} failed: {r}")
+                # 详细记录异常类型与消息, 便于定位
+                err_msg = (
+                    f"report_type={rt} failed: {type(r).__name__}: {r}"
+                )
+                errors.append(err_msg)
+                logger.error(
+                    "子图失败收集: report_type=%s, exception_type=%s, "
+                    "exception_msg=%s",
+                    rt, type(r).__name__, str(r)[:500],
+                )
             elif isinstance(r, dict) and r.get("final_cache_key"):
                 success_reports.append(
                     {
@@ -148,14 +192,34 @@ async def spawn_b_tasks_node(state: dict, settings: Any | None = None) -> dict:
                         "download_urls": r.get("download_urls", {}),
                     }
                 )
+                logger.info(
+                    "子图成功收集: report_type=%s, final_cache_key=%s",
+                    rt, r["final_cache_key"],
+                )
             else:
-                errors.append(f"report_type={rt} no_final_cache_key")
+                # 缺失 final_cache_key, 记录子图返回的完整 keys 便于诊断
+                err_msg = f"report_type={rt} no_final_cache_key"
+                errors.append(err_msg)
+                logger.error(
+                    "子图无 final_cache_key: report_type=%s, "
+                    "result_type=%s, result_keys=%s, merged_cache_key=%s, "
+                    "code_learning_cache_key=%s",
+                    rt,
+                    type(r).__name__ if r else "None",
+                    list(r.keys()) if isinstance(r, dict) else [],
+                    r.get("merged_cache_key", "") if isinstance(r, dict) else "",
+                    r.get("code_learning_cache_key", "") if isinstance(r, dict) else "",
+                )
 
         span.update(
             output={
                 "success_count": len(success_reports),
                 "error_count": len(errors),
             }
+        )
+        logger.info(
+            "spawn_b_tasks 完成: success_count=%d, error_count=%d, errors=%s",
+            len(success_reports), len(errors), errors,
         )
         return {
             "report_tasks": success_reports,

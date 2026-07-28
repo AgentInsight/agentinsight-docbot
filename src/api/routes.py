@@ -522,9 +522,20 @@ async def _stream_docbot(
 
             # 输出最终报告内容 (从 final_reports 列表提取, save_reports_node 已持久化到 DB)
             final_reports = final_state.get("final_reports") or []
+            # spawn_b_tasks_node 收集的子图错误 (用于诊断)
+            pipeline_errors = final_state.get("errors") or []
 
             if not final_reports:
-                hint = "\n\n*未生成报告内容 (可能代码仓库为空或同步未完成)*"
+                # 诊断: 输出具体错误信息, 便于定位失败原因
+                if pipeline_errors:
+                    err_detail = "; ".join(str(e)[:200] for e in pipeline_errors[:5])
+                    hint = (
+                        f"\n\n*未生成报告内容 (流水线错误)*\n\n"
+                        f"**错误详情 ({len(pipeline_errors)} 项)**:\n"
+                        f"```\n{err_detail}\n```"
+                    )
+                else:
+                    hint = "\n\n*未生成报告内容 (可能代码仓库为空或同步未完成)*"
                 collected_content.append(hint)
                 yield _sse_chunk({"content": hint})
             else:
@@ -652,9 +663,19 @@ async def _run_docbot(
             )
             # 从 final_reports 列表提取内容 (save_reports_node 已持久化到 DB)
             final_reports = final_state.get("final_reports") or []
+            # spawn_b_tasks_node 收集的子图错误 (用于诊断)
+            pipeline_errors = final_state.get("errors") or []
 
             if not final_reports:
-                content = "未生成报告内容 (可能代码仓库为空或同步未完成)"
+                # 诊断: 输出具体错误信息, 便于定位失败原因
+                if pipeline_errors:
+                    err_detail = "; ".join(str(e)[:200] for e in pipeline_errors[:5])
+                    content = (
+                        f"未生成报告内容 (流水线错误)\n\n"
+                        f"错误详情 ({len(pipeline_errors)} 项):\n{err_detail}"
+                    )
+                else:
+                    content = "未生成报告内容 (可能代码仓库为空或同步未完成)"
             else:
                 summaries: list[str] = []
                 for rpt in final_reports:
