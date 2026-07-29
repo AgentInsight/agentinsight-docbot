@@ -165,6 +165,21 @@ RUN groupadd -r agent && useradd -r -g agent -d /app -s /sbin/nologin agent \
 # 与 researcher 差异: 路径从 . 改为 agentinsight-docbot/ (构建上下文不同)
 COPY --chown=agent:agent agentinsight-docbot/ .
 
+# 离线预装 tree-sitter-language-pack parser 二进制 (P1-5.2.1/P1-5.2.2/P2-5.4.2 依赖)
+# tree-sitter-language-pack==1.13.5 运行时按需从 GitHub releases 下载 parser .so, 离线环境无法下载
+# 预下载方法 (宿主机联网执行):
+#   docker run --rm -v packages/tools/tree-sitter-cache:/out python:3.12-slim sh -c \
+#     "pip install tree-sitter-language-pack==1.13.5 && \
+#      python -c 'import tree_sitter_language_pack as m; m.prefetch([\"python\",\"javascript\",\"typescript\",\"go\",\"java\",\"rust\",\"c\",\"cpp\"])' && \
+#      cp -r /root/.cache/tree-sitter-language-pack/v1.13.5 /out/ && \
+#      cd /out && tar -czf tree-sitter-cache.tar.gz v1.13.5"
+# 解压到 /app/.cache/tree-sitter-language-pack/ (agent 用户 home=/app, cache_dir 默认 /app/.cache/tree-sitter-language-pack/v1.13.5/libs)
+COPY packages/tools/tree-sitter-cache/tree-sitter-cache.tar.gz /tmp/tree-sitter-cache.tar.gz
+RUN mkdir -p /app/.cache/tree-sitter-language-pack && \
+    tar -xzf /tmp/tree-sitter-cache.tar.gz -C /app/.cache/tree-sitter-language-pack/ && \
+    rm -f /tmp/tree-sitter-cache.tar.gz && \
+    chown -R agent:agent /app/.cache
+
 # FastEmbed ONNX 模型文件 (bge-small-zh-v1.5, 上下文压缩精排用)
 # 离线模式: 模型文件通过 docker-compose-qa.yml/docker-compose-offline.yml bind mount 挂载 (只读)
 # 路径: ./packages/models/bge-small-zh-v1.5-onnx:/app/models/bge-small-zh-v1.5-onnx:ro
