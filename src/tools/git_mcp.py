@@ -173,12 +173,12 @@ class GitMCPAdapter:
             stdout = stdout_bytes.decode("utf-8", errors="replace")
             stderr = stderr_bytes.decode("utf-8", errors="replace")
             return process.returncode or 0, stdout, stderr
-        except asyncio.TimeoutError:
+        except TimeoutError:
             try:
                 process.kill()
             except ProcessLookupError:
                 pass
-            raise TimeoutError(f"git 命令超时 ({timeout}s): {' '.join(args[:3])}")
+            raise TimeoutError(f"git 命令超时 ({timeout}s): {' '.join(args[:3])}") from None
 
     def _check_repo_size(self, repo_path: Path) -> None:
         """校验已克隆仓库大小, 超出 max_repo_size_mb 抛 ValueError."""
@@ -486,6 +486,105 @@ class GitMCPAdapter:
                 metadata={"tool_name": "git.search_code", "success": True, "matched": len(results)},
             )
             return results
+
+    async def get_head_commit_hash(self, repo_path: str) -> str:
+        """获取仓库当前 HEAD commit hash (P1-5.3.2 文档漂移检测用).
+
+        使用 git rev-parse HEAD 获取当前 HEAD 的完整 commit hash.
+        用于记录上次生成文档时的 commit, 下次同步时对比检测代码变更.
+
+        Args:
+            repo_path: 仓库本地路径
+
+        Returns:
+            完整 commit hash (40 字符 SHA-1)
+
+        Raises:
+            RuntimeError: git rev-parse 失败 (非 git 仓库 / 无提交)
+        """
+        async with trace_tool(
+            name="docbot.git.get_head_commit_hash",
+            input={"repo_path": repo_path},
+            metadata={"tool_name": "git.get_head_commit_hash"},
+        ) as span:
+            rc, stdout, stderr = await self._run_git(
+                ["rev-parse", "HEAD"],
+                cwd=repo_path,
+                timeout=30,
+            )
+            if rc != 0:
+                raise RuntimeError(f"git rev-parse HEAD 失败: {stderr[:500]}")
+
+            commit_hash = stdout.strip()
+            if not commit_hash or len(commit_hash) < 7:
+                raise RuntimeError(
+                    f"git rev-parse HEAD 返回无效 hash: '{commit_hash}'"
+                )
+
+            span.update(
+                output={"commit_hash": commit_hash[:12]},  # 仅记录短 hash 到 trace
+                metadata={"tool_name": "git.get_head_commit_hash", "success": True},
+            )
+            return commit_hash
+
+    async def list_changed_files(
+        self,
+        repo_path: str,
+        from_commit: str,
+        to_commit: str = "HEAD",
+    ) -> list[str]:
+        """获取两个 commit 之间变更的文件列表 (P1-5.3.2 文档漂移检测用).
+
+        使用 git diff --name-only 列出 from_commit 到 to_commit 之间变更的文件.
+        用于检测代码变更是否影响已生成文档引用的文件.
+
+        Args:
+            repo_path: 仓库本地路径
+            from_commit: 起始 commit hash (上次文档生成时的 commit)
+            to_commit: 结束 commit hash (默认 HEAD)
+
+        Returns:
+            变更文件路径列表 (相对路径)
+
+        Raises:
+            RuntimeError: git diff 失败 (无效 commit hash 等)
+        """
+        async with trace_tool(
+            name="docbot.git.list_changed_files",
+            input={
+                "repo_path": repo_path,
+                "from_commit": from_commit[:12],
+                "to_commit": to_commit[:12],
+            },
+            metadata={"tool_name": "git.list_changed_files"},
+        ) as span:
+            # 安全校验: commit hash 应为十六进制字符 (防止命令注入)
+            import re
+
+            if not re.match(r"^[0-9a-fA-F]{7,40}$", from_commit):
+                raise ValueError(f"非法 from_commit hash: {from_commit}")
+            if not re.match(r"^[0-9a-fA-F]{7,40}$", to_commit):
+                raise ValueError(f"非法 to_commit hash: {to_commit}")
+
+            rc, stdout, stderr = await self._run_git(
+                ["diff", "--name-only", from_commit, to_commit],
+                cwd=repo_path,
+                timeout=60,
+            )
+            if rc != 0:
+                raise RuntimeError(f"git diff 失败: {stderr[:500]}")
+
+            changed = [
+                line.strip()
+                for line in stdout.splitlines()
+                if line.strip()
+            ]
+
+            span.update(
+                output={"changed_file_count": len(changed)},
+                metadata={"tool_name": "git.list_changed_files", "success": True},
+            )
+            return changed
 
     async def test_connection(self, repo_config: dict) -> dict[str, Any]:
         """通过 git ls-remote 探活 (不实际克隆).

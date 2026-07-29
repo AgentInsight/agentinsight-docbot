@@ -59,6 +59,11 @@ onnxruntime==1.27.0  # FastEmbed 底层依赖
 rank-bm25==0.2.2
 jieba==0.42.1
 
+# === tree-sitter 仓库地图 (P1-5.2.1, 借鉴 Aider) ===
+# tree-sitter-language-pack 预装多语言 (Python/JS/TS/Go/Java/Rust/C/C++ 等), 兼容 Python 3.13
+tree-sitter==0.26.0
+tree-sitter-language-pack==1.13.5
+
 # === 可观测性 (禁 LangSmith/Langfuse/OTel 原生 API) ===
 agentinsight-sdk==0.1.5
 opentelemetry-sdk==1.43.0  # 仅作 agentinsight-sdk 底层依赖, 业务代码禁止直接使用

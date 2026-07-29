@@ -383,7 +383,66 @@ async def save_reports_node(state: dict, settings: Any | None = None) -> dict:
             )
 
         span.update(output={"saved_count": len(saved)})
+
+        # P1-5.3.2: 文档生成成功后, 更新 last_doc_commit_hash 供下次漂移检测
+        # 不阻断主流程, 失败仅记录日志
+        if saved:
+            try:
+                await _update_repo_doc_commit_hash(state=state, settings=settings, span=span)
+            except Exception as commit_err:  # noqa: BLE001
+                logger.warning(
+                    "更新 last_doc_commit_hash 失败 (不阻断主流程): %s",
+                    commit_err,
+                )
+
         return {"final_reports": saved}
+
+
+async def _update_repo_doc_commit_hash(
+    *,
+    state: dict,
+    settings: Any | None,
+    span: Any,
+) -> None:
+    """P1-5.3.2: 文档生成成功后更新 user_git_repos.last_doc_commit_hash.
+
+    获取当前仓库 HEAD commit hash, 写入 user_git_repos,
+    供下次同步时的 detect_doc_drift 对比检测文档漂移.
+    """
+    from src.memory.db_initializer import get_pool
+    from src.skills.docbot.drift_detector import update_last_doc_commit
+    from src.tools.git_mcp import get_git_mcp_adapter
+
+    repo_id = state.get("repo_id", "")
+    user_id = state.get("user_id", "")
+    agent_id = state.get("agent_id", "agentinsight-docbot")
+    if not repo_id or not user_id:
+        return
+
+    adapter = get_git_mcp_adapter()
+    repo_path = adapter._repo_path(user_id, repo_id)
+    if not repo_path.exists():
+        logger.warning(
+            "更新 last_doc_commit_hash 跳过: 仓库目录不存在 (repo_id=%s)",
+            repo_id,
+        )
+        return
+
+    try:
+        commit_hash = await adapter.get_head_commit_hash(str(repo_path))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("获取 HEAD commit hash 失败 (跳过更新 last_doc_commit_hash): %s", e)
+        return
+
+    pool = await get_pool()
+    await update_last_doc_commit(
+        pool=pool,
+        repo_id=repo_id,
+        user_id=user_id,
+        agent_id=agent_id,
+        commit_hash=commit_hash,
+    )
+    span.update(metadata={"last_doc_commit_hash": commit_hash[:12]})
 
 
 async def cleanup_repo_node(state: dict, settings: Any | None = None) -> dict:

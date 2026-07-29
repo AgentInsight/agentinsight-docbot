@@ -67,10 +67,17 @@ class TestPromptTemplates:
         assert alias == new, "别名 (*_ZH) 应指向新常量"
 
     def test_code_learning_prompt_placeholders(self) -> None:
-        """CODE_LEARNING_PROMPT 含 report_type / file_index / file_contents 占位符."""
-        assert "{report_type}" in CODE_LEARNING_PROMPT
-        assert "{file_index}" in CODE_LEARNING_PROMPT
-        assert "{file_contents}" in CODE_LEARNING_PROMPT
+        """CODE_LEARNING_PROMPT 含 7 个占位符 (P1-5.2.1/5.2.2 新增 repo_map/code_graph)."""
+        for ph in (
+            "{report_type}",
+            "{role_name}",
+            "{description}",
+            "{file_index}",
+            "{file_contents}",
+            "{repo_map}",
+            "{code_graph}",
+        ):
+            assert ph in CODE_LEARNING_PROMPT, f"CODE_LEARNING_PROMPT 缺 {ph}"
 
     def test_outline_refine_prompt_placeholders(self) -> None:
         """OUTLINE_REFINE_PROMPT 含 8 个占位符."""
@@ -125,8 +132,12 @@ class TestGetPrompt:
         prompt = get_prompt(
             "code_learner",
             report_type="architecture",
+            role_name="技术架构师",
+            description="撰写架构文档",
             file_index="file1.py\nfile2.py",
             file_contents="def hello(): pass",
+            repo_map="src/app.py:\n  def main()",
+            code_graph="# 模块依赖\nsrc/app.py -> json",
             language="zh",
         )
         assert isinstance(prompt, str)
@@ -137,6 +148,8 @@ class TestGetPrompt:
         assert "{report_type}" not in prompt
         assert "{file_index}" not in prompt
         assert "{file_contents}" not in prompt
+        assert "{repo_map}" not in prompt
+        assert "{code_graph}" not in prompt
 
     def test_get_prompt_outline_refiner(self) -> None:
         """get_prompt('outline_refiner', ...) 不抛异常."""
@@ -161,8 +174,10 @@ class TestGetPrompt:
         prompt = get_prompt(
             "content_filler",
             chapter_title="概述",
+            chapter_purpose="介绍项目背景",
             chapter_sections=["背景", "目标"],
             key_points=["要点1"],
+            chapter_example="示例模板",
             language="zh",
             code_summary="代码摘要",
             rag_context="RAG 检索结果",
@@ -207,12 +222,12 @@ class TestGetPrompt:
             description="撰写架构文档",
             report_type="architecture",
             language="zh",
-            merged_content="合并内容",
+            sections_summary="章节摘要内容",
             code_summary="代码摘要",
         )
         assert isinstance(prompt, str)
-        assert "合并内容" in prompt
-        assert "{merged_content}" not in prompt
+        assert "章节摘要内容" in prompt
+        assert "{sections_summary}" not in prompt
 
     def test_get_prompt_unknown_task_raises(self) -> None:
         """get_prompt 未知 task 抛 ValueError."""

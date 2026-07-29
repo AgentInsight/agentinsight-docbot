@@ -23,15 +23,15 @@
 | MERGE_PROMPT           | report_type / language / chapter_count / all_content | Markdown 文本 |
 | FINAL_REVIEW_PROMPT    | role_name / description / report_type / language / sections_summary / code_summary | JSON: {title, summary, terminology_suggestions, duplicate_chapters} |
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 # ===== 任务一：代码深度学习 =====
 # 调用方: skills.docbot.code_learner.learn_code()
-# format() kwargs: report_type / role_name / description / file_index / file_contents
+# format() kwargs: report_type / role_name / description / file_index / file_contents / repo_map / code_graph
 # 输出: JSON {"summary", "key_modules", "dependencies", "architecture_notes"}
 # 设计参考: Aider (RepoMap + PageRank) / Continue.dev (多索引) / AutoCodeRover (AST 检索)
-# 优化要点: persona 注入 + report_type 差异化 + 结构化 JSON 输出 + 代码引用规范
+# 优化要点: persona 注入 + report_type 差异化 + 结构化 JSON 输出 + 代码引用规范 + P1-5.2.1 tree-sitter 仓库地图 + P1-5.2.2 代码知识图谱
 CODE_LEARNING_PROMPT = """你是 {role_name}. {description}
 
 你的任务: 深度学习用户提供的代码仓库, 输出可被下游 outline / content_filler / reviewer 精确引用的结构化摘要.
@@ -51,6 +51,12 @@ CODE_LEARNING_PROMPT = """你是 {role_name}. {description}
 # 文件索引
 {file_index}
 
+# 仓库符号地图 (tree-sitter 解析, P1-5.2.1)
+{repo_map}
+
+# 代码知识图谱 (P1-5.2.2: 模块依赖 / 调用关系 / 继承链)
+{code_graph}
+
 # 关键文件内容
 {file_contents}
 
@@ -59,6 +65,7 @@ CODE_LEARNING_PROMPT = """你是 {role_name}. {description}
 2. 区分「确定性事实(来自代码)」与「推测(标注 confidence: low/medium/high)」
 3. 优先依赖符号签名 (类/函数/方法) 推断架构, 只在必要时引用完整代码块
 4. 识别入口点 / 核心模块 / 关键依赖 / 数据流 / 控制流 / 设计模式
+5. 利用「仓库符号地图」快速定位模块边界与依赖关系, 减少对完整代码块的依赖
 
 # 输出要求
 长度控制在 20000 字以内, 必须覆盖后续文档撰写所需的全部信息.
@@ -157,10 +164,26 @@ CONTENT_FILL_PROMPT = """你是技术文档撰写专家, 正在填充以下章�
 
 # 任务要求
 1. 严格按章节要点展开内容, 每节 300-800 字
-2. 引用代码仓库的实际文件路径、类名、函数名作为佐证 (格式: src/xxx.py:行号)
+2. 引用代码仓库的实际文件路径、类名、函数名作为佐证, 必须使用行级引用格式
 3. 使用 Markdown 格式, 含表格、代码块
 4. 章节总长度 2000-5000 字
 5. 仅使用与本章节关键点相关的 RAG 检索结果, 忽略明显属于其他章节的内容
+
+# 行级引用格式 (P1-5.3.1, 核心约束, 必须遵守)
+引用代码时, 必须在描述后用方括号标注代码位置, 支持以下 3 种格式:
+- 行范围引用: [src/foo.py:L42-L58]  (推荐, 标注起止行号)
+- 单行引用:   [src/foo.py:L42]      (单行时使用)
+- 文件级引用: [src/foo.py]           (无法确定具体行号时使用, 但不推荐)
+
+示例:
+- API 路由注册在 FastAPI 应用实例上 [src/api/routes.py:L47-L120]
+- 数据库初始化使用 advisory lock 防止并发执行 [src/memory/db_initializer.py:L35-L52]
+
+约束:
+1. 引用路径必须以 src/ / scripts/ / tests/ / docs/ / config/ 等顶级目录开头
+2. 每段描述至少包含 1 个行级引用 (引用代码佐证关键论断)
+3. 引用格式必须用方括号 [] 包裹, 不要用括号 () 或反引号 ` ` 包裹整个引用
+4. 行号必须为正整数, line_start <= line_end
 
 # 图表策略 (核心约束, 必须遵守)
 1. 禁止输出 PlantUML 代码块 (```plantuml 或 @startuml), 系统不支持 PlantUML 渲染服务, 会触发 "Diagram server error (HTTP 400)"
@@ -311,6 +334,107 @@ MERGER_PROMPT_ZH = MERGE_PROMPT
 FINAL_REVIEWER_PROMPT_ZH = FINAL_REVIEW_PROMPT
 
 
+# ===== P2-5.4.1 多视角代码审问 (借鉴 STORM) =====
+# 调用方: skills.docbot.multi_perspective_learner._generate_questions / _answer_questions / _synthesize
+# 设计: 3 阶段 (FAST 提问 -> SMART 回答 -> STRATEGIC 汇总), 复用 repo_map / code_graph 上下文
+# 成本控制: 提问阶段仅用 repo_map+code_graph (无 file_contents), 回答阶段截断 file_contents 到 100K
+MULTI_PERSPECTIVE_QUESTION_PROMPT = """你是 {role}, 关注维度: {focus}.
+
+你的任务: 基于以下代码仓库的结构信息, 从你的视角提出 5-8 个针对性问题, 用于深入理解代码以撰写 {report_type} 文档.
+
+# 提问主题 (围绕这些主题展开, 但不限于)
+{question_topics}
+
+# 仓库符号地图 (tree-sitter 解析)
+{repo_map}
+
+# 代码知识图谱 (模块依赖 / 调用关系 / 继承链)
+{code_graph}
+
+# 文件索引摘要
+{file_index}
+
+# 提问要求
+1. 每个问题必须可从代码中找到答案 (避免抽象问题)
+2. 问题应聚焦你的视角关注点 ({focus}), 避免与其他视角重叠
+3. 优先询问代码结构、依赖关系、关键入口点、设计模式
+4. 避免询问业务背景或需求来源 (本任务仅关注代码事实)
+
+# 输出格式 (严格 JSON, 不要 markdown 代码块)
+{{
+  "questions": ["问题1", "问题2", "问题3", ...]
+}}
+"""
+
+
+MULTI_PERSPECTIVE_ANSWER_PROMPT = """你是 {role}, 正在回答关于代码仓库的问题.
+
+你的任务: 基于以下代码内容, 回答 {perspective_role} 提出的问题, 输出结构化答案.
+
+# 问题列表
+{questions}
+
+# 仓库符号地图
+{repo_map}
+
+# 代码知识图谱
+{code_graph}
+
+# 关键文件内容
+{file_contents}
+
+# 回答要求
+1. 每个答案必须引用具体代码位置 (文件路径:行号), 如 [src/foo.py:L42-L58]
+2. 区分确定性事实 (来自代码) 与推测 (标注 confidence: low/medium/high)
+3. 若代码中无足够信息回答某问题, 明确标注 "信息不足" 并说明需要哪些文件
+4. 答案简洁聚焦, 单题 100-300 字
+
+# 输出格式 (严格 JSON, 不要 markdown 代码块)
+{{
+  "answers": [
+    {{"question": "原问题", "answer": "答案", "citations": ["src/foo.py:L42-L58"], "confidence": "high"}}
+  ]
+}}
+"""
+
+
+MULTI_PERSPECTIVE_SYNTHESIS_PROMPT = """你是 {role_name}. {description}
+
+你的任务: 综合 {perspective_count} 个视角的问答结果, 输出统一的结构化代码学习摘要, 用于撰写 {report_type} 文档.
+
+# 各视角问答结果
+{perspective_qa}
+
+# 仓库符号地图
+{repo_map}
+
+# 代码知识图谱
+{code_graph}
+
+# 文件索引摘要
+{file_index}
+
+# 综合要求
+1. 整合多视角发现, 去重并保留各视角独特洞察
+2. 所有引用必须带「文件路径:行号」精确坐标
+3. 区分「确定性事实(来自代码)」与「推测(标注 confidence: low/medium/high)」
+4. 识别入口点 / 核心模块 / 关键依赖 / 数据流 / 控制流 / 设计模式
+5. 长度控制在 20000 字以内
+
+# 输出格式 (严格 JSON, 不要 markdown 代码块)
+{{
+  "summary": "Markdown 格式的整体摘要, 含项目概述/技术栈/架构模式/核心模块/数据流/关键发现 6 个二级章节, 每个事实带文件路径:行号引用",
+  "key_modules": [
+    {{"name": "模块名", "path": "src/xxx/yyy.py", "responsibility": "职责描述", "key_symbols": ["函数/类名"], "confidence": "high"}}
+  ],
+  "dependencies": [
+    {{"from": "模块A", "to": "模块B", "type": "import|call|inherit", "evidence": "src/a.py:10"}}
+  ],
+  "architecture_notes": "架构笔记: 设计模式 / 数据流 / 关键约定 / 演进建议, Markdown 格式, 带文件路径:行号引用"
+}}
+"""
+
+
 # 任务名 -> 模板常量映射
 _TASK_TEMPLATES: dict[str, str] = {
     "code_learner": CODE_LEARNING_PROMPT,
@@ -361,6 +485,10 @@ __all__ = [
     "REVIEWER_PROMPT_ZH",
     "MERGER_PROMPT_ZH",
     "FINAL_REVIEWER_PROMPT_ZH",
+    # P2-5.4.1 多视角代码审问
+    "MULTI_PERSPECTIVE_QUESTION_PROMPT",
+    "MULTI_PERSPECTIVE_ANSWER_PROMPT",
+    "MULTI_PERSPECTIVE_SYNTHESIS_PROMPT",
     # 工具函数
     "get_prompt",
 ]

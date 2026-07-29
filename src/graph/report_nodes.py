@@ -594,7 +594,7 @@ async def g_final_in_subgraph_node(state: dict, settings: Any | None = None) -> 
             except (json.JSONDecodeError, TypeError) as e:
                 logger.warning("code_learning_cache JSON 解析失败: %s", e)
 
-    # 调用 FinalReviewerG 终审
+    # 调用 FinalReviewerG 终审 (P1-5.3.3: 传入 refined chapters 供结构校验)
     reviewer = FinalReviewerG(settings)
     final_doc = await reviewer.finalize_single_report(
         report_type=report_type,
@@ -603,6 +603,7 @@ async def g_final_in_subgraph_node(state: dict, settings: Any | None = None) -> 
         code_learning=code_learning,
         llm_session_id=llm_session_id,
         settings=settings,
+        chapters=state.get("chapters") or None,
     )
 
     # 写入 final_cache

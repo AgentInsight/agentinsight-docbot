@@ -30,7 +30,6 @@ from typing import Any, Literal
 
 import asyncpg
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from src.api.middleware import get_request_agent_id, get_request_user_id
@@ -622,6 +621,33 @@ async def _run_sync(
             len(files),
             namespace,
         )
+
+        # 5. P1-5.3.2: 代码变更触发文档漂移检测 (不阻断同步流程)
+        # 对比 last_doc_commit_hash 与当前 HEAD, 若不同则标记引用了变更文件的报告为 stale
+        try:
+            from src.skills.docbot.drift_detector import detect_doc_drift
+
+            drift_result = await detect_doc_drift(
+                repo_id=repo_id,
+                user_id=user_id,
+                agent_id=agent_id,
+                repo_path=repo_path,
+                adapter=adapter,
+                pool=pool,
+                settings=settings,
+            )
+            if drift_result.get("detected"):
+                logger.warning(
+                    "文档漂移检测: 标记 %d 个报告为 stale (repo_id=%s)",
+                    len(drift_result.get("stale_reports", [])),
+                    repo_id,
+                )
+        except Exception as drift_err:  # noqa: BLE001
+            logger.warning(
+                "文档漂移检测异常 (不阻断同步, repo_id=%s): %s",
+                repo_id,
+                drift_err,
+            )
 
     except Exception as e:  # noqa: BLE001
         logger.warning("仓库同步失败 (不阻断主流程): repo_id=%s, error=%s", repo_id, e)

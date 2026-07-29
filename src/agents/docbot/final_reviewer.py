@@ -68,6 +68,8 @@ class FinalReviewerG:
         code_learning: dict,
         llm_session_id: str,
         settings: Any | None = None,
+        *,
+        chapters: list[dict] | None = None,
     ) -> dict:
         """单报告终审 (子图内调用).
 
@@ -76,6 +78,11 @@ class FinalReviewerG:
         - LLM 输出 JSON: {title, summary, terminology_suggestions, duplicate_chapters}
         - content_md 从 merged 透传 + 术语替换 (不经 LLM 生成, 避免截断/篡改)
         - duplicate_chapters 仅记录日志, 不实际删除 (避免章节丢失)
+
+        P1-5.3.3 优化 (2026-07-29): 新增文档结构完整性校验.
+        - 调用 validate_structure() 校验章节齐全度 / 代码路径引用 / Markdown 结构 / 术语一致性
+        - 校验结果附加到返回 dict 的 structure_issues 字段
+        - 校验不阻断流程, 仅记录日志和返回告警
 
         历史决策 (2026-07-23): 曾降级为仅生成 title+summary.
         原因: 原 prompt 要求 LLM 将整个 content_md 作为 JSON 输出, 导致截断.
@@ -88,9 +95,10 @@ class FinalReviewerG:
             code_learning: 任务一代码学习摘要
             llm_session_id: LLM 会话 ID
             settings: Settings 实例 (可选)
+            chapters: refined outline 章节列表 (可选, 缺省时从 default outline 加载)
 
         Returns:
-            {title, summary, content_md, image_svgs, toc}
+            {title, summary, content_md, image_svgs, toc, structure_issues}
         """
         # settings 透传给 LLM 调用 (LLMClient 内部解析)
         merged_content = ""
@@ -163,12 +171,60 @@ class FinalReviewerG:
                     "terminology_applied": final_content_md != merged_content,
                 }
             )
+
+            # P1-5.3.3: 文档结构完整性校验 (不阻断流程, 仅记录日志)
+            structure_issues = self._validate_document_structure(
+                content_md=final_content_md,
+                report_type=report_type,
+                language=language,
+                code_learning=code_learning,
+                chapters=chapters,
+            )
+            if structure_issues.get("error_count", 0) > 0:
+                logger.warning(
+                    "终审文档结构校验发现 %d 个错误, %d 个警告 (report_type=%s): %s",
+                    structure_issues.get("error_count", 0),
+                    structure_issues.get("warning_count", 0),
+                    report_type,
+                    [i.get("message", "")[:80] for i in structure_issues.get("issues", [])][:5],
+                )
+            else:
+                logger.info(
+                    "终审文档结构校验通过 (0 错误, %d 个警告, report_type=%s)",
+                    structure_issues.get("warning_count", 0),
+                    report_type,
+                )
+
+            # P1-5.3.1: 行级引用提取与校验 (不阻断流程, 供后续落库 report_citations)
+            citations, citation_validation = self._extract_and_validate_citations(
+                content_md=final_content_md,
+                code_learning=code_learning,
+            )
+            if citations:
+                logger.info(
+                    "终审提取到 %d 条行级引用 (有效 %d, 无效 %d, report_type=%s)",
+                    citation_validation.get("total_citations", 0),
+                    citation_validation.get("valid_count", 0),
+                    citation_validation.get("invalid_count", 0),
+                    report_type,
+                )
+                if citation_validation.get("invalid_count", 0) > 0:
+                    logger.warning(
+                        "引用校验发现 %d 个问题 (report_type=%s): %s",
+                        len(citation_validation.get("issues", [])),
+                        report_type,
+                        [i.get("message", "")[:80] for i in citation_validation.get("issues", [])][:5],
+                    )
+
             return {
                 "title": title,
                 "summary": summary,
                 "content_md": final_content_md,  # 透传 + 术语替换, 零章节丢失
                 "image_svgs": merged_images,
                 "toc": merged_toc,
+                "structure_issues": structure_issues,
+                "citations": citations,  # P1-5.3.1: 供后续落库 report_citations 表
+                "citation_validation": citation_validation,
             }
 
     @staticmethod
@@ -203,6 +259,122 @@ class FinalReviewerG:
                 preview = preview + "..."
             summaries.append(f"### 章节{i}: {first_line}\n{preview}")
         return "\n\n".join(summaries) if summaries else "(无章节内容)"
+
+    @staticmethod
+    def _validate_document_structure(
+        *,
+        content_md: str,
+        report_type: str,
+        language: str,
+        code_learning: dict,
+        chapters: list[dict] | None = None,
+    ) -> dict:
+        """P1-5.3.3: 文档结构完整性校验包装器.
+
+        若 chapters 未提供, 从 default outline 加载 (refined outline 不可用时兜底).
+        若 code_learning 含 file_index, 用于代码路径引用校验.
+
+        Args:
+            content_md: 终审后的文档内容
+            report_type: 报告类型
+            language: 文档语言
+            code_learning: 任务一代码学习产物 (含 file_index)
+            chapters: refined outline 章节列表 (可选)
+
+        Returns:
+            validate_structure() 返回的校验结果 dict; 校验异常时返回空结果不阻断流程.
+        """
+        try:
+            from src.skills.docbot.structure_validator import validate_structure
+
+            # chapters 兜底: 从 default outline 加载
+            outline_chapters: list[dict] = chapters or []
+            if not outline_chapters and report_type:
+                try:
+                    from src.config.docbot.outlines import load_outline
+
+                    outline_chapters = load_outline(report_type)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(
+                        "结构校验: 加载 default outline 失败 (跳过章节齐全度校验): %s",
+                        e,
+                    )
+
+            # file_index 从 code_learning 提取
+            file_index = None
+            if isinstance(code_learning, dict):
+                fi = code_learning.get("file_index")
+                if isinstance(fi, dict):
+                    file_index = fi
+
+            return validate_structure(
+                content_md=content_md,
+                chapters=outline_chapters,
+                file_index=file_index,
+                report_type=report_type,
+                language=language,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "文档结构校验异常 (不阻断终审, 返回空结果): %s", e
+            )
+            return {
+                "passed": True,
+                "skipped": True,
+                "reason": f"structure_validation_error: {e}",
+                "issues": [],
+                "total_issues": 0,
+                "error_count": 0,
+                "warning_count": 0,
+            }
+
+    @staticmethod
+    def _extract_and_validate_citations(
+        *,
+        content_md: str,
+        code_learning: dict,
+    ) -> tuple[list[dict], dict]:
+        """P1-5.3.1: 行级引用提取与校验包装器.
+
+        从终审后的文档内容中提取 [src/foo.py:L42-L58] 形式引用,
+        并校验引用的文件路径是否在 file_index 中存在.
+
+        Args:
+            content_md: 终审后的文档内容
+            code_learning: 任务一代码学习产物 (含 file_index)
+
+        Returns:
+            (citations, validation_result) 元组; 异常时返回空列表不阻断流程.
+        """
+        try:
+            from src.skills.docbot.citation_extractor import (
+                extract_and_validate_citations,
+            )
+
+            # file_index 从 code_learning 提取
+            file_index = None
+            if isinstance(code_learning, dict):
+                fi = code_learning.get("file_index")
+                if isinstance(fi, dict):
+                    file_index = fi
+
+            return extract_and_validate_citations(
+                content_md=content_md,
+                file_index=file_index,
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(
+                "行级引用提取校验异常 (不阻断终审, 返回空结果): %s", e
+            )
+            return [], {
+                "passed": True,
+                "skipped": True,
+                "reason": f"citation_extraction_error: {e}",
+                "total_citations": 0,
+                "valid_count": 0,
+                "invalid_count": 0,
+                "issues": [],
+            }
 
     @staticmethod
     def _apply_terminology_suggestions(

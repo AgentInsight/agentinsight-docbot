@@ -85,6 +85,11 @@ ALTER TABLE IF EXISTS research_reports
     ADD COLUMN IF NOT EXISTS report_type_label VARCHAR(64),
     ADD COLUMN IF NOT EXISTS report_summary TEXT,
     ADD COLUMN IF NOT EXISTS report_image_svg TEXT;
+-- P1-5.3.2 文档漂移检测: 标记文档是否因代码变更而过期
+ALTER TABLE IF EXISTS research_reports
+    ADD COLUMN IF NOT EXISTS is_stale BOOLEAN DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS stale_reason TEXT,
+    ADD COLUMN IF NOT EXISTS stale_detected_at TIMESTAMPTZ;
 -- docbot 索引: 按 agent_id + user_id + report_type_label 查询用户的某类文档 (见 ARCHITECTURE.md §5.3)
 CREATE INDEX IF NOT EXISTS idx_research_reports_agent_user_type
     ON research_reports(agent_id, user_id, report_type_label);
@@ -121,6 +126,34 @@ CREATE TABLE IF NOT EXISTS token_usage_logs (
 CREATE INDEX IF NOT EXISTS idx_token_usage_logs_agent_user ON token_usage_logs(agent_id, user_id);
 CREATE INDEX IF NOT EXISTS idx_token_usage_logs_session ON token_usage_logs(session_id);
 CREATE INDEX IF NOT EXISTS idx_token_usage_logs_stage ON token_usage_logs(stage);
+
+-- ========== 业务表: 报告行级引用溯源 (P1-5.3.1, 2026-07-29 新增) ==========
+-- 存储文档中 [src/foo.py:L42-L58] 形式引用 → 代码位置映射, 支持引用可追溯性
+-- 设计参考: STORM 引用机制; 引用校验由 structure_validator + citation_extractor 完成
+CREATE TABLE IF NOT EXISTS report_citations (
+    id BIGSERIAL PRIMARY KEY,
+    report_id UUID NOT NULL,                   -- 关联 research_reports.report_id
+    agent_id VARCHAR(64) NOT NULL,             -- 多 Agent 数据隔离
+    user_id VARCHAR(64) NOT NULL,              -- 用户隔离
+    session_id VARCHAR(64) NOT NULL,           -- 会话隔离
+    report_type_label VARCHAR(64),             -- 8 种文档类型之一
+    chapter_idx INTEGER,                       -- 引用所在章节序号 (1-based)
+    file_path VARCHAR(512) NOT NULL,           -- 被引用的代码文件路径 (如 src/foo.py)
+    line_start INTEGER,                        -- 行号起始 (可选, 单行引用时等于 line_end)
+    line_end INTEGER,                          -- 行号结束 (可选)
+    raw_reference VARCHAR(256),                -- 原始引用文本 (如 [src/foo.py:L42-L58])
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- 复合索引: 按 report_id 查询所有引用 (报告下载页"点击引用跳转代码"用)
+CREATE INDEX IF NOT EXISTS idx_report_citations_report ON report_citations(report_id);
+-- 复合索引: 多 Agent 数据隔离 + 按用户检索
+CREATE INDEX IF NOT EXISTS idx_report_citations_agent_user
+    ON report_citations(agent_id, user_id);
+-- 复合索引: 按文件路径反查引用了该文件的所有报告 (代码变更触发文档漂移检测用, P1-5.3.2)
+CREATE INDEX IF NOT EXISTS idx_report_citations_file_path
+    ON report_citations(agent_id, user_id, file_path);
+-- 外键约束: report_id 应在 research_reports 中存在 (延迟约束, 允许先建引用后补报告)
+-- 注: 不加 FK 强制约束, 因 final_cache 写入顺序可能先于 research_reports 落库
 
 -- ========== V7: 时间戳字段完整性修复 (P0) ==========
 -- 1. 回填 research_reports 历史 NULL 值 (幂等: 二次执行无 NULL 行可更新)
@@ -177,6 +210,8 @@ CREATE TABLE IF NOT EXISTS user_git_repos (
     last_synced_at TIMESTAMPTZ,                 -- 最后同步时间
     last_sync_status VARCHAR(32),               -- success|failed|pending
     last_sync_error TEXT,                       -- 最后同步错误信息
+    last_doc_commit_hash VARCHAR(40),           -- P1-5.3.2: 上次生成文档时的 commit hash (40 字符 SHA-1)
+    last_doc_synced_at TIMESTAMPTZ,             -- P1-5.3.2: 上次文档生成对应的同步时间
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -184,6 +219,10 @@ CREATE INDEX IF NOT EXISTS idx_user_git_repos_agent_user ON user_git_repos(agent
 CREATE INDEX IF NOT EXISTS idx_user_git_repos_enabled ON user_git_repos(agent_id, user_id, enabled);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_git_repos_unique_name
     ON user_git_repos(agent_id, user_id, repo_name);
+-- 旧表兜底: P1-5.3.2 新增 last_doc_commit_hash / last_doc_synced_at 列
+ALTER TABLE IF EXISTS user_git_repos
+    ADD COLUMN IF NOT EXISTS last_doc_commit_hash VARCHAR(40),
+    ADD COLUMN IF NOT EXISTS last_doc_synced_at TIMESTAMPTZ;
 CREATE OR REPLACE TRIGGER trg_user_git_repos_updated_at
     BEFORE UPDATE ON user_git_repos
     FOR EACH ROW

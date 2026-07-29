@@ -25,12 +25,14 @@ from typing import Any
 
 from src.llm.client import LLMClient, LLMTier, get_llm_client
 from src.observability.tracing import trace_chain
+from src.skills.docbot.code_graph import build_code_graph, format_code_graph_for_prompt
 from src.skills.docbot.repo_loader import (
     build_file_index,
     clone_repo,
     read_files,
     select_key_files,
 )
+from src.skills.docbot.repo_map import generate_repo_map
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +93,10 @@ async def learn_code(
         logger.info(
             "learn_code 开始: report_type=%s, repo_id=%s, user_id=%s, "
             "llm_session_id=%s, repo_url=%s",
-            report_type, repo_id, user_id, llm_session_id,
+            report_type,
+            repo_id,
+            user_id,
+            llm_session_id,
             repo_config.get("repo_url", ""),
         )
 
@@ -103,13 +108,17 @@ async def learn_code(
             logger.exception(
                 "learn_code 步骤1 失败: 克隆仓库异常. report_type=%s, repo_id=%s, "
                 "repo_url=%s, error=%s: %s",
-                report_type, repo_id, repo_config.get("repo_url", ""),
-                type(e).__name__, e,
+                report_type,
+                repo_id,
+                repo_config.get("repo_url", ""),
+                type(e).__name__,
+                e,
             )
             raise
         logger.info(
             "learn_code 步骤1 完成: repo_path=%s (report_type=%s)",
-            repo_path, report_type,
+            repo_path,
+            report_type,
         )
         span.update(metadata={"repo_path": repo_path})
 
@@ -119,13 +128,17 @@ async def learn_code(
         file_count = file_index.get("file_count", 0)
         logger.info(
             "learn_code 步骤2 完成: file_count=%d, total_size_bytes=%d (report_type=%s)",
-            file_count, file_index.get("total_size_bytes", 0), report_type,
+            file_count,
+            file_index.get("total_size_bytes", 0),
+            report_type,
         )
         if file_count == 0:
             logger.error(
                 "learn_code 严重: 仓库文件数为 0, 可能仓库为空或克隆未完成. "
                 "report_type=%s, repo_path=%s, repo_url=%s",
-                report_type, repo_path, repo_config.get("repo_url", ""),
+                report_type,
+                repo_path,
+                repo_config.get("repo_url", ""),
             )
         span.update(metadata={"file_count": file_count})
 
@@ -133,17 +146,20 @@ async def learn_code(
         key_files = select_key_files(file_index, max_files=30)
         logger.info(
             "learn_code 步骤3: 选取关键文件 %d 个 (report_type=%s)",
-            len(key_files), report_type,
+            len(key_files),
+            report_type,
         )
         file_contents = await read_files(repo_path, key_files, settings=settings)
         logger.info(
             "learn_code 步骤3 完成: file_contents_length=%d (report_type=%s)",
-            len(file_contents), report_type,
+            len(file_contents),
+            report_type,
         )
         if not file_contents:
             logger.warning(
                 "learn_code 警告: 关键文件内容为空. report_type=%s, key_files=%s",
-                report_type, key_files[:5],
+                report_type,
+                key_files[:5],
             )
         span.update(
             metadata={
@@ -157,20 +173,86 @@ async def learn_code(
         role_name, description = _load_persona(report_type)
         logger.info(
             "learn_code 步骤4: prompt_template 长度=%d, role_name=%s (report_type=%s)",
-            len(prompt_template), role_name, report_type,
+            len(prompt_template),
+            role_name,
+            report_type,
         )
 
-        # 5. 构造 prompt (注入 persona + report_type + 文件索引 + 文件内容)
+        # 4.5 P1-5.2.1: 生成 tree-sitter 仓库地图 (失败降级为空, 不阻断主流程)
+        repo_map = generate_repo_map(repo_path, file_index)
+        logger.info(
+            "learn_code 步骤4.5: repo_map 长度=%d (report_type=%s)",
+            len(repo_map),
+            report_type,
+        )
+        span.update(metadata={"repo_map_length": len(repo_map)})
+
+        # 4.6 P1-5.2.2: 构建代码知识图谱 (模块依赖 / 调用关系 / 继承链)
+        code_graph_obj = build_code_graph(repo_path, file_index)
+        code_graph_text = format_code_graph_for_prompt(code_graph_obj)
+        logger.info(
+            "learn_code 步骤4.6: code_graph nodes=%d, edges=%d, text_length=%d (report_type=%s)",
+            len(code_graph_obj.nodes),
+            len(code_graph_obj.edges),
+            len(code_graph_text),
+            report_type,
+        )
+        span.update(
+            metadata={
+                "code_graph_nodes": len(code_graph_obj.nodes),
+                "code_graph_edges": len(code_graph_obj.edges),
+            }
+        )
+
+        # 4.7 P2-5.4.1: 多视角代码审问分支 (开关开启时调用, 失败降级到单视角)
+        if _is_multi_perspective_enabled(settings):
+            logger.info(
+                "learn_code 步骤4.7: 多视角代码审问已启用, 调用 multi_perspective_learner (report_type=%s)",
+                report_type,
+            )
+            try:
+                from src.skills.docbot.multi_perspective_learner import (
+                    learn_code_multi_perspective,
+                )
+
+                return await learn_code_multi_perspective(
+                    repo_config=repo_config,
+                    repo_id=repo_id,
+                    user_id=user_id,
+                    report_type=report_type,
+                    llm_session_id=llm_session_id,
+                    repo_path=repo_path,
+                    file_index=file_index,
+                    file_contents=file_contents,
+                    code_graph_obj=code_graph_obj,
+                    settings=settings,
+                )
+            except Exception as e:
+                logger.warning(
+                    "learn_code 步骤4.7 失败: 多视角审问异常, 降级到单视角. "
+                    "report_type=%s, error=%s: %s",
+                    report_type,
+                    type(e).__name__,
+                    e,
+                )
+                span.update(
+                    metadata={"multi_perspective_fallback_reason": f"{type(e).__name__}: {e}"}
+                )
+
+        # 5. 构造 prompt (注入 persona + report_type + 文件索引 + 文件内容 + 仓库地图 + 代码图谱)
         prompt = prompt_template.format(
             report_type=report_type,
             role_name=role_name,
             description=description,
             file_index=file_index.get("summary", ""),
             file_contents=file_contents[:500_000],  # 截断防止超长
+            repo_map=repo_map,
+            code_graph=code_graph_text,
         )
         logger.info(
             "learn_code 步骤5: prompt 构造完成, 长度=%d (report_type=%s)",
-            len(prompt), report_type,
+            len(prompt),
+            report_type,
         )
 
         # 6. STRATEGIC LLM 学习
@@ -178,7 +260,8 @@ async def learn_code(
         messages = [{"role": "user", "content": prompt}]
         logger.info(
             "learn_code 步骤6: 调用 STRATEGIC LLM (report_type=%s, session_id=%s)",
-            report_type, llm_session_id,
+            report_type,
+            llm_session_id,
         )
         try:
             response = await llm.achat(
@@ -190,21 +273,26 @@ async def learn_code(
             )
         except Exception as e:
             logger.exception(
-                "learn_code 步骤6 失败: LLM 调用异常. report_type=%s, "
-                "tier=STRATEGIC, error=%s: %s",
-                report_type, type(e).__name__, e,
+                "learn_code 步骤6 失败: LLM 调用异常. report_type=%s, tier=STRATEGIC, error=%s: %s",
+                report_type,
+                type(e).__name__,
+                e,
             )
             raise
         logger.info(
             "learn_code 步骤6 完成: LLM 响应 content_length=%d, model=%s, "
             "input_tokens=%d, output_tokens=%d (report_type=%s)",
-            len(response.content or ""), response.model,
-            response.input_tokens, response.output_tokens, report_type,
+            len(response.content or ""),
+            response.model,
+            response.input_tokens,
+            response.output_tokens,
+            report_type,
         )
         if not response.content:
             logger.error(
                 "learn_code 严重: LLM 返回空 content. report_type=%s, model=%s",
-                report_type, response.model,
+                report_type,
+                response.model,
             )
 
         # 7. 解析 LLM JSON 输出, 提取结构化字段
@@ -220,7 +308,8 @@ async def learn_code(
             key_modules = _extract_modules_fallback(file_index)
             logger.info(
                 "learn_code 降级: key_modules 从文件索引启发式提取, count=%d (report_type=%s)",
-                len(key_modules), report_type,
+                len(key_modules),
+                report_type,
             )
         dependencies = parsed.get("dependencies", [])
         if not dependencies:
@@ -228,7 +317,8 @@ async def learn_code(
             dependencies = _extract_dependencies_fallback(file_index)
             logger.info(
                 "learn_code 降级: dependencies 从文件索引提取, count=%d (report_type=%s)",
-                len(dependencies), report_type,
+                len(dependencies),
+                report_type,
             )
 
         learning_result = {
@@ -243,8 +333,10 @@ async def learn_code(
         logger.info(
             "learn_code 全部完成: report_type=%s, summary_length=%d, "
             "key_modules=%d, dependencies=%d",
-            report_type, len(learning_result["summary"]),
-            len(key_modules), len(dependencies),
+            report_type,
+            len(learning_result["summary"]),
+            len(key_modules),
+            len(dependencies),
         )
         return learning_result
 
@@ -257,6 +349,19 @@ def _get_llm(settings: Any | None) -> LLMClient:
         return get_llm_client()
     except Exception:  # noqa: BLE001
         return get_llm_client()
+
+
+def _is_multi_perspective_enabled(settings: Any | None) -> bool:
+    """检查 P2-5.4.1 多视角代码审问开关是否开启.
+
+    默认关闭 (settings 为 None 或字段缺失时返回 False, 保持向后兼容).
+    """
+    if settings is None:
+        return False
+    try:
+        return bool(getattr(settings, "docbot_multi_perspective_enabled", False))
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _load_prompt_template() -> str:
@@ -334,7 +439,12 @@ def _parse_learning_response(content: str) -> dict:
             pass
 
     logger.warning("LLM 输出 JSON 解析失败, 降级为纯文本 summary")
-    return {"summary": content, "key_modules": [], "dependencies": [], "architecture_notes": content}
+    return {
+        "summary": content,
+        "key_modules": [],
+        "dependencies": [],
+        "architecture_notes": content,
+    }
 
 
 def _extract_modules_fallback(file_index: dict) -> list[dict]:
@@ -379,12 +489,14 @@ def _extract_dependencies_fallback(file_index: dict) -> list[dict]:
             continue
         name = f.get("name", "")
         if name in dep_names:
-            deps.append({
-                "from": name,
-                "to": f.get("path", name),
-                "type": "dependency_file",
-                "evidence": f.get("path", name),
-            })
+            deps.append(
+                {
+                    "from": name,
+                    "to": f.get("path", name),
+                    "type": "dependency_file",
+                    "evidence": f.get("path", name),
+                }
+            )
     return deps
 
 

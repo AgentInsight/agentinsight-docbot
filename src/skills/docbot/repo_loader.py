@@ -44,14 +44,23 @@ _SKIP_DIRS: frozenset[str] = frozenset(
 # 跳过的文件名
 _SKIP_FILES: frozenset[str] = frozenset({".DS_Store", "Thumbs.db"})
 
-# 关键文件名 (select_key_files 优先选取)
+# 关键文件名 (select_key_files 优先选取) — 按 P1-5.2.3 优化扩展
+# 新增: llms.txt / CLAUDE.md / CHANGELOG.md (业界代码理解 Agent 通用约定)
 _KEY_FILE_NAMES: frozenset[str] = frozenset(
     {
+        # 文档型 (最高优先级, 供任务一代码学习优先读入)
         "README.md",
         "README.rst",
         "README.txt",
         "README",
         "readme.md",
+        "llms.txt",
+        "AGENTS.md",
+        "CLAUDE.md",
+        "ARCHITECTURE.md",
+        "CONTRIBUTING.md",
+        "CHANGELOG.md",
+        # 依赖清单 (高优先级)
         "pyproject.toml",
         "setup.py",
         "requirements.txt",
@@ -60,8 +69,7 @@ _KEY_FILE_NAMES: frozenset[str] = frozenset(
         "Cargo.toml",
         "pom.xml",
         "build.gradle",
-        "settings.py",
-        "config.py",
+        # 入口文件 (中优先级)
         "main.py",
         "app.py",
         "server.py",
@@ -70,12 +78,57 @@ _KEY_FILE_NAMES: frozenset[str] = frozenset(
         "main.go",
         "main.rs",
         "Application.java",
+        # 配置文件 (中优先级)
+        "settings.py",
+        "config.py",
         "Dockerfile",
         "docker-compose.yml",
+    }
+)
+
+# 关键文件优先级分组 (P1-5.2.3: 文档型 > 清单 > 入口 > 配置)
+# 数值越小优先级越高; 未命中的关键文件默认优先级 50; 普通代码文件优先级 100
+_PRIORITY_DOC_FILES: frozenset[str] = frozenset(
+    {
+        "llms.txt",
+        "README.md",
+        "README.rst",
+        "README.txt",
+        "README",
+        "readme.md",
         "AGENTS.md",
+        "CLAUDE.md",
         "ARCHITECTURE.md",
         "CONTRIBUTING.md",
+        "CHANGELOG.md",
     }
+)
+_PRIORITY_MANIFEST_FILES: frozenset[str] = frozenset(
+    {
+        "pyproject.toml",
+        "setup.py",
+        "requirements.txt",
+        "package.json",
+        "go.mod",
+        "Cargo.toml",
+        "pom.xml",
+        "build.gradle",
+    }
+)
+_PRIORITY_ENTRY_FILES: frozenset[str] = frozenset(
+    {
+        "main.py",
+        "app.py",
+        "server.py",
+        "index.ts",
+        "index.js",
+        "main.go",
+        "main.rs",
+        "Application.java",
+    }
+)
+_PRIORITY_CONFIG_FILES: frozenset[str] = frozenset(
+    {"settings.py", "config.py", "Dockerfile", "docker-compose.yml"}
 )
 
 # 关键文件扩展名 (代码入口 / 配置)
@@ -246,8 +299,37 @@ def _build_summary(files: list[dict], total_size: int) -> str:
     return "\n".join(parts)
 
 
+def _file_priority(name: str) -> int:
+    """返回关键文件优先级 (数值越小优先级越高).
+
+    P1-5.2.3 优先级队列: 文档型(10) > 依赖清单(20) > 入口文件(30) > 配置文件(40)
+    > 其他关键文件(50) > 普通代码文件(100)
+    """
+    if name in _PRIORITY_DOC_FILES:
+        return 10
+    if name in _PRIORITY_MANIFEST_FILES:
+        return 20
+    if name in _PRIORITY_ENTRY_FILES:
+        return 30
+    if name in _PRIORITY_CONFIG_FILES:
+        return 40
+    if name in _KEY_FILE_NAMES:
+        return 50
+    return 100
+
+
+def _path_depth(path: str) -> int:
+    """返回文件路径深度 (根目录=0, 越深数值越大; 用于同优先级内根目录优先)."""
+    parts = Path(path).parts
+    # 去掉文件名本身, 仅统计目录层数
+    return max(0, len(parts) - 1)
+
+
 def select_key_files(file_index: dict, *, max_files: int = 50) -> list[str]:
     """选取关键文件 (README / 入口 / 配置 / 核心模块).
+
+    P1-5.2.3 优化: 按优先级分组选取 (文档型 > 依赖清单 > 入口 > 配置 > 其他关键 > 代码补足),
+    同优先级内根目录文件优先 (路径深度小的优先), 再按路径字母序稳定排序.
 
     Args:
         file_index: build_file_index 返回的索引
@@ -257,22 +339,28 @@ def select_key_files(file_index: dict, *, max_files: int = 50) -> list[str]:
         关键文件路径列表 (相对路径)
     """
     files = file_index.get("files", []) if isinstance(file_index, dict) else []
-    key_files: list[str] = []
-    other_files: list[str] = []
+    key_files: list[tuple[int, int, str]] = []  # (priority, depth, path)
+    other_files: list[tuple[int, int, str]] = []
     for f in files:
         if not isinstance(f, dict):
             continue
         name = f.get("name", "")
         path = f.get("path", "")
         ext = f.get("ext", "")
-        if name in _KEY_FILE_NAMES:
-            key_files.append(path)
+        priority = _file_priority(name)
+        depth = _path_depth(path)
+        entry = (priority, depth, path)
+        if priority < 100:
+            key_files.append(entry)
         elif ext in _KEY_FILE_EXTENSIONS:
-            other_files.append(path)
-    # 优先关键文件, 不足时用代码文件补
-    result = key_files[:max_files]
+            other_files.append(entry)
+    # 关键文件按 (priority, depth, path) 稳定排序
+    key_files.sort()
+    # 代码补足文件按 (depth, path) 排序 (根目录优先)
+    other_files.sort(key=lambda x: (x[1], x[2]))
+    result = [p for _, _, p in key_files[:max_files]]
     if len(result) < max_files:
-        result.extend(other_files[: max_files - len(result)])
+        result.extend(p for _, _, p in other_files[: max_files - len(result)])
     return result
 
 

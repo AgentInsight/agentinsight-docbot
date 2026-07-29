@@ -265,8 +265,14 @@ class Settings(BaseSettings):
     # ========== 报告输出 ==========
     default_report_format: Literal["markdown", "html", "pdf", "docx", "json"] = "markdown"
     default_report_type: Literal[
-        "architecture", "design", "requirements", "testcase",
-        "optimization", "performance", "defect", "api_doc"
+        "architecture",
+        "design",
+        "requirements",
+        "testcase",
+        "optimization",
+        "performance",
+        "defect",
+        "api_doc",
     ] = "architecture"
     # 报告语言 (zh|en), 默认 zh; docbot 仅支持 2 种语言
     report_language: str = "zh"
@@ -322,10 +328,16 @@ class Settings(BaseSettings):
     docbot_outlines_dir: str = "src/config/docbot/outlines"
     # 6 步流水线缓存 TTL（秒，默认 24 小时）
     docbot_cache_ttl: int = 86400
+    # P2-5.4.1 多视角代码审问开关 (默认关闭, 开启后任务一改用多视角流程)
+    # 多视角流程: 3 视角并发 (FAST 提问 → SMART 回答) → STRATEGIC 汇总
+    # 成本约为单视角的 4-5 倍, 但代码理解深度显著提升
+    docbot_multi_perspective_enabled: bool = False
     # 支持 2 种语言
     supported_languages: str = "zh,en"
     # 支持 8 种文档类型
-    supported_report_types: str = "architecture,design,requirements,testcase,optimization,performance,defect,api_doc"
+    supported_report_types: str = (
+        "architecture,design,requirements,testcase,optimization,performance,defect,api_doc"
+    )
     # MCP 子进程配置（系统自带，不入 mcp_configs 表）
     mcp_git_command: str = "uvx"
     mcp_git_args: str = '["mcp-server-git"]'
