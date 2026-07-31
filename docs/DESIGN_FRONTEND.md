@@ -2,7 +2,7 @@
 
 > 版本：v1.1  
 > 日期：2026-07-20  
-> 配套：[ARCHITECTURE.md](./ARCHITECTURE.md) / [DESIGN_AGENT.md](./DESIGN_AGENT.md)
+> 配套：[architecture.md](./architecture.md) / [DESIGN_AGENT.md](./DESIGN_AGENT.md)
 
 ---
 

@@ -8,6 +8,7 @@
 | **`agent_id`** | `agentinsight-docbot` |
 | **Compose 项目名** | `agentinsight-docbot`（与同机 researcher 8066 并存） |
 | **真源规则** | 根目录 [`AGENTS.md`](../../AGENTS.md)、本目录 [`AGENTS.md`](../AGENTS.md) |
+| **本文档路径** | [`docs/architecture.md`](./architecture.md) |
 
 ## 专家审阅角色（≥10）
 
@@ -26,7 +27,7 @@
 | 安全合规工程师 | `GIT_CREDENTIAL_KEY` AES-GCM、仓库 URL 白名单 |
 | Docker/部署工程师 | 5 容器编排、无 SearXNG |
 | 测试/CI 工程师 | `tests/` 与 docbot 专属 e2e |
-| 文档工程师 | 与 [`DESIGN_AGENT.md`](./DESIGN_AGENT.md) 分工：本文为顶层架构 SSOT |
+| 文档工程师 | 本文档路径为 `docs/architecture.md`，与 [`DESIGN_AGENT.md`](./DESIGN_AGENT.md) 分工：本文为顶层架构 SSOT |
 
 ---
 
@@ -306,5 +307,5 @@ flowchart LR
 ## 14. 配套文档
 
 - 代码级设计：[`DESIGN_AGENT.md`](./DESIGN_AGENT.md)
-- 前端交互（已迁移）：[`../agentinsight-demo/docs/ARCHITECTURE.md`](../../agentinsight-demo/docs/ARCHITECTURE.md)
+- 前端交互（已迁移）：[`../agentinsight-demo/docs/architecture.md`](../../agentinsight-demo/docs/architecture.md)
 - 8 种文档默认大纲：`src/config/docbot/outlines/*.yaml`（原独立 OUTLINE.md 已迁移）

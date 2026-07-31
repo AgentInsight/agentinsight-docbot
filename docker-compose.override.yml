@@ -1,0 +1,4 @@
+services:
+  agent-docbot:
+    environment:
+      - MAX_REPO_SIZE_MB=4096

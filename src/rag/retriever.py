@@ -165,7 +165,7 @@ class HybridRetriever:
         """docbot 专用: 构建多仓库检索 namespace 列表.
 
         docbot 场景下, 用户代码索引按 {agent_id}:{user_id}:{repo_id} 隔离.
-        见 docs/ARCHITECTURE.md 第 7.2 节 + 第 7.3 节.
+        见 docs/architecture.md 第 7.2 节 + 第 7.3 节.
 
         namespace 组成:
         - 共享知识库: {agent_id}-data (所有用户共享, 复用 AIR 共享池)

@@ -90,7 +90,7 @@ ALTER TABLE IF EXISTS research_reports
     ADD COLUMN IF NOT EXISTS is_stale BOOLEAN DEFAULT FALSE,
     ADD COLUMN IF NOT EXISTS stale_reason TEXT,
     ADD COLUMN IF NOT EXISTS stale_detected_at TIMESTAMPTZ;
--- docbot 索引: 按 agent_id + user_id + report_type_label 查询用户的某类文档 (见 ARCHITECTURE.md §5.3)
+-- docbot 索引: 按 agent_id + user_id + report_type_label 查询用户的某类文档 (见 architecture.md §5.3)
 CREATE INDEX IF NOT EXISTS idx_research_reports_agent_user_type
     ON research_reports(agent_id, user_id, report_type_label);
 -- 兜底唯一索引: 旧表无 report_id PK 时保证唯一 (新表已有 PK, DO 块条件化避免冗余)

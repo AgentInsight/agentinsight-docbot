@@ -128,7 +128,7 @@ src/
     ├── repo_routes.py         # 新增：/v1/repos 用户代码仓库 CRUD + 测试 + 同步
     └── ip_user_resolver.py    # 从 AIR 拷贝
 
-docs/                          # 设计与架构文档（ARCHITECTURE.md / DESIGN_AGENT.md / DESIGN_FRONTEND.md）
+docs/                          # 设计与架构文档（architecture.md / DESIGN_AGENT.md / DESIGN_FRONTEND.md）
 # 8 种文档默认大纲已迁移至 src/config/docbot/outlines/*.yaml（YAML 格式, 智能体友好, 由 outlines.py 加载）
 
 scripts/init.sql               # 完整 DDL（基础 DDL + docbot 专属 DDL）
@@ -587,7 +587,7 @@ docbot 仓库当前仅持有生产联网模式 + 生产离线模式所需的最�
 
 ## 14. 配套文档
 
-- [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)：架构文档（顶层设计、目录结构、多智能体编排、数据库设计、LLM 网关、RAG、MCP、API、部署、安全合规、性能容量、测试策略）
+- [docs/architecture.md](./docs/architecture.md)：架构文档（顶层设计、目录结构、多智能体编排、数据库设计、LLM 网关、RAG、MCP、API、部署、安全合规、性能容量、测试策略）
 - [docs/DESIGN_AGENT.md](./docs/DESIGN_AGENT.md)：智能体详细设计文档（代码级，State schema、节点函数、守卫路由、图构建器、7 个子智能体业务逻辑、缓存管理、8 种 persona 字典、8 种默认大纲加载器、提示词模板、Settings 扩展、GitMCPAdapter、`/v1/repos` API、init.sql 追加 DDL、server.py 含系统 MCP 子进程启动、Dockerfile、docker-compose.yml、测试用例骨架）
 - 8 种文档默认大纲（YAML 格式, 智能体友好, 运行时按需加载, 详见第 7 章）：
   - [src/config/docbot/outlines/architecture.yaml](./src/config/docbot/outlines/architecture.yaml)：技术架构文档

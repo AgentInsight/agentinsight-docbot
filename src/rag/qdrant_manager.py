@@ -323,14 +323,14 @@ class QdrantManager:
 
     # ========== docbot 专属 namespace API (多仓库隔离) ==========
     # docbot 场景: 用户可配置多个代码仓库, 每个仓库的代码索引必须按 repo_id 隔离
-    # namespace 格式 (见 docs/ARCHITECTURE.md 第 7.2 节):
+    # namespace 格式 (见 docs/architecture.md 第 7.2 节):
     #   {agent_name}:{user_id}:{repo_id}
     # 与 AIR 的 {agent_name}-data:{user_id} 池隔离, 避免跨业务污染
     def build_repo_namespace(self, user_id: str, repo_id: str) -> str:
         """docbot 用户仓库私有 namespace = {agent_id}:{user_id}:{repo_id}.
 
         用户私有代码索引按 user_id + repo_id 双维度隔离, payload 含 user_id + repo_id.
-        见 docs/ARCHITECTURE.md 第 7.2 节 "代码索引写入 Qdrant" 流程.
+        见 docs/architecture.md 第 7.2 节 "代码索引写入 Qdrant" 流程.
 
         Args:
             user_id: 用户 ID

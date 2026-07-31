@@ -1,6 +1,6 @@
 """单元测试: ReportStore docbot 扩展列写入.
 
-测试目标 (见 ARCHITECTURE.md §5.3):
+测试目标 (见 architecture.md §5.3):
 - save_report 接受 report_type_label / report_summary / report_image_svg 三个新参数
 - INSERT SQL 含三个新列 ($9, $10, $11)
 - _SELECT_COLUMNS 含三个新列

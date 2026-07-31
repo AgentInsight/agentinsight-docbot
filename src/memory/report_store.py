@@ -21,7 +21,7 @@ from src.memory.db_initializer import get_pool
 logger = logging.getLogger(__name__)
 
 # 查询字段列表 (SELECT * 的显式版, 避免 SELECT * 在表结构变更时的隐患)
-# docbot 扩展列: report_type_label / report_summary / report_image_svg (见 ARCHITECTURE.md §5.3)
+# docbot 扩展列: report_type_label / report_summary / report_image_svg (见 architecture.md §5.3)
 _SELECT_COLUMNS = (
     "report_id, session_id, user_id, agent_id, query, "
     "report_md, report_format, sources, agent_role, "
@@ -83,7 +83,7 @@ class ReportStore:
             sources: 引用来源列表
             agent_role: 角色 persona 简称 (可选)
             report_type_label: docbot 文档类型标签 (architecture|design|requirements|
-                testcase|optimization|performance|defect|api_doc), 见 ARCHITECTURE.md §5.3
+                testcase|optimization|performance|defect|api_doc), 见 architecture.md §5.3
             report_summary: docbot 报告摘要 (LLM 生成的 1-3 句话概述)
             report_image_svg: docbot 报告配图 SVG 字符串 (DeepSeek 生成)
 
