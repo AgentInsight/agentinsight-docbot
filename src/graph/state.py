@@ -85,7 +85,7 @@ class ReportTaskState(TypedDict):
 
     # 缓存键 (state 仅存键, 避免膨胀; 实际内容存 Redis)
     code_learning_cache_key: str  # 任务一产物
-    outline_cache_key: str  # 任务二产物 (纲要细化已移除, 保留字段兼容)
+    outline_cache_key: str  # 任务二产物 (OutlineRefinerC STRATEGIC 优化后的纲要)
     content_cache_keys: Annotated[list[str], operator.add]  # 任务三产物 (按章节)
     reviewed_cache_keys: Annotated[list[str], operator.add]  # 任务四产物 (按章节)
     merged_cache_key: str  # 任务五产物

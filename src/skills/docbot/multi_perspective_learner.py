@@ -228,9 +228,8 @@ async def learn_code_multi_perspective(
             "dependencies": dependencies,
             "architecture_notes": parsed.get("architecture_notes", synthesis_result),
             "repo_path": repo_path,
-            # v5-P0-A: 补充 repo_map 和 code_graph, 供 SymbolValidator / SignatureExtractor 消费
-            # (与 code_learner.py 单视角分支保持一致, 防止多视角分支绕过 P0-A 修复)
-            "repo_map": repo_map,  # str: tree-sitter 符号地图文本
+            # v5-P0-A: 补充 repo_map 和 code_graph
+            "repo_map": repo_map,
             "code_graph": {
                 "nodes": [
                     {
@@ -254,7 +253,7 @@ async def learn_code_multi_perspective(
                     k: sorted(v) for k, v in code_graph_obj.module_deps.items()
                 },
             },
-            # v12: 与单视角 learn_code 对齐, 保留 AST 端点/术语/scope 等事实字段
+            # v12: 与单视角 learn_code 对齐
             "project_metadata": project_metadata or {},
             "project_metadata_text": project_metadata_text,
             "terminology_glossary": terminology_glossary or {},
@@ -268,8 +267,21 @@ async def learn_code_multi_perspective(
             "config_specs": config_specs or {},
             "config_specs_text": config_specs_text,
         }
-        span.update(output={"summary_length": len(learning_result["summary"])})
-        logger.info(
+        # v2-P0-C: 透传类型专属字段
+        try:
+            from src.config.docbot.learning_focus import (
+                LEARNING_SCHEMA_VERSION,
+                extract_type_specific_fields,
+            )
+
+            type_specific = extract_type_specific_fields(report_type, parsed)
+            learning_result["learning_schema_version"] = LEARNING_SCHEMA_VERSION
+            learning_result["type_specific"] = type_specific
+            learning_result.update(type_specific)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("multi_perspective 类型字段提取失败 (降级跳过): %s", e)
+
+        span.update(output={"summary_length": len(learning_result["summary"])})        logger.info(
             "multi_perspective_learning 全部完成: report_type=%s, "
             "valid_perspectives=%d, summary_length=%d, repo_map_length=%d, code_graph_nodes=%d",
             report_type,
@@ -462,12 +474,18 @@ async def _synthesize(
     llm: Any,
 ) -> str:
     """阶段 3: STRATEGIC LLM 汇总多视角问答."""
+    from src.config.docbot.learning_focus import (
+        format_extra_schema,
+        format_learning_focus,
+    )
     from src.config.docbot.prompts import MULTI_PERSPECTIVE_SYNTHESIS_PROMPT
 
     prompt = MULTI_PERSPECTIVE_SYNTHESIS_PROMPT.format(
         role_name=role_name,
         description=description,
         report_type=report_type,
+        learning_focus=format_learning_focus(report_type),
+        output_schema_extra=format_extra_schema(report_type),
         perspective_count=perspective_count,
         perspective_qa=perspective_qa,
         repo_map=repo_map,

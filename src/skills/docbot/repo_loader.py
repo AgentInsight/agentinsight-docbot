@@ -326,21 +326,125 @@ def _path_depth(path: str) -> int:
     return max(0, len(parts) - 1)
 
 
-def select_key_files(file_index: dict, *, max_files: int = 50) -> list[str]:
+# 按 report_type 提升路径/文件名匹配优先级的通用模式 (禁止绑定具体业务仓)
+# 数值越小越优先; 在基础 priority 上叠加 type_boost (负值=提升)
+_REPORT_TYPE_PATH_BOOSTS: dict[str, tuple[tuple[str, int], ...]] = {
+    "api_doc": (
+        ("controller", -40),
+        ("router", -40),
+        ("routes", -40),
+        ("handler", -35),
+        ("openapi", -40),
+        ("swagger", -35),
+        ("endpoint", -30),
+        ("api/", -25),
+        ("apis/", -25),
+    ),
+    "architecture": (
+        ("docker-compose", -40),
+        ("dockerfile", -40),
+        ("helm/", -30),
+        ("k8s/", -30),
+        ("kubernetes/", -30),
+        ("graph/", -25),
+        ("builder", -20),
+        ("deploy", -20),
+    ),
+    "design": (
+        ("models/", -35),
+        ("schemas/", -35),
+        ("interfaces/", -35),
+        ("dto", -25),
+        ("entity", -20),
+        ("domain/", -25),
+    ),
+    "requirements": (
+        ("readme", -30),
+        ("agents.md", -35),
+        ("routes/", -25),
+        ("router", -25),
+        ("openapi", -25),
+        ("docs/", -20),
+    ),
+    "testcase": (
+        ("tests/", -45),
+        ("test/", -45),
+        ("_test.", -40),
+        (".spec.", -40),
+        (".test.", -40),
+        ("__tests__/", -45),
+        ("fixtures/", -25),
+    ),
+    "optimization": (
+        ("cache/", -35),
+        ("db/", -30),
+        ("database/", -30),
+        ("redis", -25),
+        ("pool", -25),
+        ("async", -15),
+        ("queue", -20),
+    ),
+    "performance": (
+        ("cache/", -30),
+        ("db/", -30),
+        ("database/", -30),
+        ("hot", -15),
+        ("bench", -25),
+        ("perf", -25),
+        ("profile", -25),
+    ),
+    "defect": (
+        ("exception", -25),
+        ("error", -20),
+        ("middleware", -20),
+        ("lock", -20),
+        ("mutex", -20),
+        ("security", -15),
+    ),
+}
+
+
+def _report_type_boost(path: str, name: str, report_type: str | None) -> int:
+    """按 report_type 对路径打分 boost (负值提升优先级); 未知类型返回 0."""
+    if not report_type:
+        return 0
+    patterns = _REPORT_TYPE_PATH_BOOSTS.get(report_type)
+    if not patterns:
+        return 0
+    haystack = f"{path}/{name}".replace("\\", "/").lower()
+    best = 0
+    for needle, boost in patterns:
+        if needle.lower() in haystack:
+            if boost < best:
+                best = boost
+    return best
+
+
+def select_key_files(
+    file_index: dict,
+    *,
+    max_files: int = 50,
+    report_type: str | None = None,
+) -> list[str]:
     """选取关键文件 (README / 入口 / 配置 / 核心模块).
 
     P1-5.2.3 优化: 按优先级分组选取 (文档型 > 依赖清单 > 入口 > 配置 > 其他关键 > 代码补足),
     同优先级内根目录文件优先 (路径深度小的优先), 再按路径字母序稳定排序.
 
+    P0 (code-learning-v1): 传入 report_type 时, 按类型对路径模式叠加 boost,
+    使 api_doc 更倾向 controller/router, testcase 更倾向 tests/ 等.
+
     Args:
         file_index: build_file_index 返回的索引
         max_files: 最大返回文件数 (避免 LLM 上下文超限)
+        report_type: 报告类型 (可选, 用于按学习侧重调整选取)
 
     Returns:
         关键文件路径列表 (相对路径)
     """
     files = file_index.get("files", []) if isinstance(file_index, dict) else []
-    key_files: list[tuple[int, int, str]] = []  # (priority, depth, path)
+    # (effective_priority, depth, path)
+    key_files: list[tuple[int, int, str]] = []
     other_files: list[tuple[int, int, str]] = []
     for f in files:
         if not isinstance(f, dict):
@@ -348,22 +452,23 @@ def select_key_files(file_index: dict, *, max_files: int = 50) -> list[str]:
         name = f.get("name", "")
         path = f.get("path", "")
         ext = f.get("ext", "")
-        priority = _file_priority(name)
+        base_priority = _file_priority(name)
+        boost = _report_type_boost(path, name, report_type)
+        # 类型命中的普通代码文件也进入候选 (否则仅靠补足槽位)
+        effective = base_priority + boost
         depth = _path_depth(path)
-        entry = (priority, depth, path)
-        if priority < 100:
+        entry = (effective, depth, path)
+        if base_priority < 100 or boost < 0:
             key_files.append(entry)
         elif ext in _KEY_FILE_EXTENSIONS:
             other_files.append(entry)
-    # 关键文件按 (priority, depth, path) 稳定排序
     key_files.sort()
-    # 代码补足文件按 (depth, path) 排序 (根目录优先)
-    other_files.sort(key=lambda x: (x[1], x[2]))
+    other_files.sort(key=lambda x: (x[0], x[1], x[2]))
     result = [p for _, _, p in key_files[:max_files]]
     if len(result) < max_files:
-        result.extend(p for _, _, p in other_files[: max_files - len(result)])
+        remaining = [p for _, _, p in other_files if p not in result]
+        result.extend(remaining[: max_files - len(result)])
     return result
-
 
 async def read_files(
     repo_path: str,

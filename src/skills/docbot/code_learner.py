@@ -142,8 +142,8 @@ async def learn_code(
             )
         span.update(metadata={"file_count": file_count})
 
-        # 3. 选取关键文件 + 读取内容
-        key_files = select_key_files(file_index, max_files=30)
+        # 3. 选取关键文件 + 读取内容 (P0: 按 report_type 调整优先级)
+        key_files = select_key_files(file_index, max_files=30, report_type=report_type)
         logger.info(
             "learn_code 步骤3: 选取关键文件 %d 个 (report_type=%s)",
             len(key_files),
@@ -389,17 +389,33 @@ async def learn_code(
                     metadata={"multi_perspective_fallback_reason": f"{type(e).__name__}: {e}"}
                 )
 
-        # 5. 构造 prompt (注入 persona + report_type + 文件索引 + 文件内容 + 仓库地图 + 代码图谱)
-        # v9-P0-A: 同时注入 v8 上下文 (project_metadata/glossary/endpoints/enums/config_specs/scopes)
-        prompt = prompt_template.format(
-            report_type=report_type,
-            role_name=role_name,
-            description=description,
-            file_index=file_index.get("summary", ""),
-            file_contents=file_contents[:500_000],  # 截断防止超长
+        # 5. 构造 prompt (注入 persona + 按类型学习侧重 + 文件索引 + 确定性事实层)
+        # v9-P0-A: 注入 v8 上下文; v2-P0: learning_focus / output_schema_extra 按类型切片
+        # P1-A: 按 token 预算裁剪各上下文块 (字符近似 token≈len/4)
+        from src.config.docbot.learning_focus import (
+            LEARNING_SCHEMA_VERSION,
+            extract_type_specific_fields,
+            format_extra_schema,
+            format_learning_focus,
+        )
+
+        learning_focus = format_learning_focus(report_type)
+        output_schema_extra = format_extra_schema(report_type)
+        (
+            repo_map_budgeted,
+            code_graph_budgeted,
+            file_contents_budgeted,
+            meta_budgeted,
+            gloss_budgeted,
+            ep_budgeted,
+            en_budgeted,
+            cfg_budgeted,
+            scopes_budgeted,
+        ) = _apply_token_budgets(
+            settings=settings,
             repo_map=repo_map,
             code_graph=code_graph_text,
-            # v9 新增 kwargs (从 v8 提取的上下文)
+            file_contents=file_contents,
             project_metadata_text=project_metadata_text,
             glossary_text=glossary_text,
             endpoints_text=endpoints_text,
@@ -407,10 +423,28 @@ async def learn_code(
             config_specs_text=config_specs_text,
             scopes_text=scopes_text,
         )
+        prompt = prompt_template.format(
+            report_type=report_type,
+            role_name=role_name,
+            description=description,
+            learning_focus=learning_focus,
+            output_schema_extra=output_schema_extra,
+            file_index=file_index.get("summary", ""),
+            file_contents=file_contents_budgeted,
+            repo_map=repo_map_budgeted,
+            code_graph=code_graph_budgeted,
+            project_metadata_text=meta_budgeted,
+            glossary_text=gloss_budgeted,
+            endpoints_text=ep_budgeted,
+            enums_text=en_budgeted,
+            config_specs_text=cfg_budgeted,
+            scopes_text=scopes_budgeted,
+        )
         logger.info(
-            "learn_code 步骤5: prompt 构造完成, 长度=%d (report_type=%s, v9 kwargs 已注入)",
+            "learn_code 步骤5: prompt 构造完成, 长度=%d (report_type=%s, schema=%s)",
             len(prompt),
             report_type,
+            LEARNING_SCHEMA_VERSION,
         )
 
         # 6. STRATEGIC LLM 学习
@@ -482,6 +516,13 @@ async def learn_code(
                 report_type,
             )
 
+        # P0-C: 透传类型专属字段; P1-B: 引用后校验
+        type_specific = extract_type_specific_fields(report_type, parsed)
+        citation_issues = _validate_learning_citations(
+            parsed=parsed,
+            type_specific=type_specific,
+            file_index=file_index,
+        )
         learning_result = {
             "summary": parsed.get("summary", response.content),
             "file_index": file_index,
@@ -489,6 +530,7 @@ async def learn_code(
             "dependencies": dependencies,
             "architecture_notes": parsed.get("architecture_notes", response.content),
             "repo_path": repo_path,
+            "learning_schema_version": LEARNING_SCHEMA_VERSION,
             # v5-P0-A: 补充 repo_map 和 code_graph, 供 SymbolValidator / SignatureExtractor 消费
             "repo_map": repo_map,  # str: tree-sitter 符号地图文本
             "code_graph": {
@@ -530,6 +572,10 @@ async def learn_code(
             # v14: 领域符号 + 字面量路由 (终审事实附录)
             "domain_symbols": domain_symbols,
             "literal_api_routes": literal_api_routes,
+            # v2-P0-C / P1-B
+            "type_specific": type_specific,
+            "citation_issues": citation_issues,
+            **type_specific,
         }
         span.update(output={"summary_length": len(learning_result["summary"])})
         logger.info(
@@ -702,6 +748,133 @@ def _extract_dependencies_fallback(file_index: dict) -> list[dict]:
                 }
             )
     return deps
+
+
+def _clip_chars(text: str, max_chars: int) -> str:
+    """按字符上限裁剪文本."""
+    if not text or max_chars <= 0:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    return text[: max(0, max_chars - 20)] + "\n... (truncated)"
+
+
+def _apply_token_budgets(
+    *,
+    settings: Any | None,
+    repo_map: str,
+    code_graph: str,
+    file_contents: str,
+    project_metadata_text: str,
+    glossary_text: str,
+    endpoints_text: str,
+    enums_text: str,
+    config_specs_text: str,
+    scopes_text: str,
+) -> tuple[str, str, str, str, str, str, str, str, str]:
+    """P1-A: 按 STRATEGIC 窗口分配上下文预算并裁剪.
+
+    budget ≈ strategic_context_tokens * 0.6:
+    - repo_map ≤ 15%
+    - code_graph ≤ 10%
+    - 确定性层 *_text ≤ 25%
+    - file_contents ≤ 50%
+    """
+    ctx_tokens = 128_000
+    if settings is not None:
+        ctx_tokens = int(
+            getattr(settings, "strategic_context_tokens", None)
+            or getattr(settings, "context_max_tokens", None)
+            or 128_000
+        )
+    budget = max(8_000, int(ctx_tokens * 0.6))
+    repo_map_chars = (budget * 15 // 100) * 4
+    code_graph_chars = (budget * 10 // 100) * 4
+    facts_chars = (budget * 25 // 100) * 4
+    files_chars = (budget * 50 // 100) * 4
+
+    # 确定性层 6 段均分 facts 预算
+    per_fact = max(2_000, facts_chars // 6)
+    return (
+        _clip_chars(repo_map, repo_map_chars),
+        _clip_chars(code_graph, code_graph_chars),
+        _clip_chars(file_contents, min(files_chars, 500_000)),
+        _clip_chars(project_metadata_text, per_fact),
+        _clip_chars(glossary_text, per_fact),
+        _clip_chars(endpoints_text, per_fact),
+        _clip_chars(enums_text, per_fact),
+        _clip_chars(config_specs_text, per_fact),
+        _clip_chars(scopes_text, per_fact),
+    )
+
+
+# path:line 引用模式 (兼容 path:L42)
+_PATH_LINE_RE = re.compile(
+    r"(?P<path>[A-Za-z0-9_./\\-]+\.[A-Za-z0-9]+):L?(?P<line>\d+)"
+)
+
+
+def _validate_learning_citations(
+    *,
+    parsed: dict,
+    type_specific: dict,
+    file_index: dict | None,
+) -> list[dict]:
+    """P1-B: 对 summary / architecture_notes / 类型字段中的 path:line 做存在性校验.
+
+    无效引用记入 citation_issues (不阻断主流程); 失败降级为空列表.
+    """
+    if not isinstance(parsed, dict):
+        return []
+    try:
+        from src.skills.docbot.citation_extractor import validate_citations
+    except Exception as e:  # noqa: BLE001
+        logger.warning("citation_extractor 不可用, 跳过学习结果引用校验: %s", e)
+        return []
+
+    texts: list[str] = []
+    for key in ("summary", "architecture_notes"):
+        val = parsed.get(key)
+        if isinstance(val, str) and val:
+            texts.append(val)
+    texts.append(json.dumps(type_specific, ensure_ascii=False) if type_specific else "")
+
+    blob = "\n".join(texts)
+    citations: list[dict] = []
+    seen: set[tuple[str, int | None, int | None]] = set()
+    for m in _PATH_LINE_RE.finditer(blob):
+        path = m.group("path").replace("\\", "/")
+        # 去掉可能的前导 ./
+        path = path.lstrip("./")
+        line = int(m.group("line"))
+        key = (path, line, line)
+        if key in seen:
+            continue
+        seen.add(key)
+        citations.append(
+            {
+                "file_path": path,
+                "line_start": line,
+                "line_end": line,
+                "raw_reference": m.group(0),
+                "chapter_idx": None,
+            }
+        )
+    if not citations:
+        return []
+    try:
+        result = validate_citations(citations, file_index=file_index)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("学习结果引用校验失败 (降级空): %s", e)
+        return []
+    issues = result.get("issues") or []
+    if issues:
+        logger.info(
+            "learn_code P1-B: citation_issues=%d (missing_files=%d)",
+            len(issues),
+            len(result.get("missing_files") or []),
+        )
+    return list(issues) if isinstance(issues, list) else []
 
 
 __all__ = ["learn_code"]

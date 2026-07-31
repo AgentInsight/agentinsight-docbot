@@ -16,7 +16,7 @@
 占位符与输出格式对照表:
 | 模板 | 占位符 | 输出格式 |
 |------|--------|----------|
-| CODE_LEARNING_PROMPT   | report_type / role_name / description / file_index / file_contents | JSON: {summary, key_modules, dependencies, architecture_notes} |
+| CODE_LEARNING_PROMPT   | report_type / role_name / description / learning_focus / output_schema_extra / file_index / file_contents / repo_map / code_graph / v9 *_text | JSON: 公共四字段 + 类型专属可选字段 |
 | OUTLINE_REFINE_PROMPT  | role_name / description / report_type / language / default_outline / code_summary / key_modules / dependencies | JSON: {chapters: [{idx, title, sections, key_points}]} |
 | CONTENT_FILL_PROMPT    | chapter_title / chapter_purpose / chapter_sections / key_points / chapter_example / language / code_summary / rag_context | Markdown 文本 (单章节) |
 | REVIEW_PROMPT          | chapter_title / chapter_sections / key_points / content / code_summary / language | JSON: {needs_revision, review_notes, revised_content} |
@@ -30,25 +30,18 @@ from __future__ import annotations
 # 调用方: skills.docbot.code_learner.learn_code()
 # format() kwargs: report_type / role_name / description / file_index / file_contents / repo_map / code_graph
 #                  + v9: project_metadata_text / glossary_text / endpoints_text / enums_text / config_specs_text / scopes_text
-# 输出: JSON {"summary", "key_modules", "dependencies", "architecture_notes"}
-# 设计参考: Aider (RepoMap + PageRank) / Continue.dev (多索引 + INSTRUCTIONS_BASE_ITEM) / AutoCodeRover (AST 检索) / STORM (代码结构驱动)
-# 优化要点: persona 注入 + report_type 差异化 + 结构化 JSON 输出 + 代码引用规范 + P1-5.2.1 tree-sitter 仓库地图 + P1-5.2.2 代码知识图谱
+#                  + v2-P0: learning_focus / output_schema_extra (来自 learning_focus.py, 按 report_type 切片)
+# 输出: JSON {"summary", "key_modules", "dependencies", "architecture_notes", ...类型专属可选字段}
+# 设计参考: Aider (RepoMap + PageRank) / Continue.dev (多索引) / DeepWiki grounding / OpenDeepWiki 按域 catalog
+# 优化要点: persona 注入 + report_type 真正切换侧重 + 结构化 JSON + 路径硬约束 + 确定性事实层
 # v9-P0-A: 注入 v8 上下文 (project_metadata/glossary/endpoints/enums/config_specs/scopes) + 术语保留硬约束
+# v2-P0: 学习侧重按类型切片 (禁止 8 种全量清单), 输出 schema 追加类型专属字段
 CODE_LEARNING_PROMPT = """你是 {role_name}. {description}
 
 你的任务: 深度学习用户提供的代码仓库, 输出可被下游 outline / content_filler / reviewer 精确引用的结构化摘要.
 
 # 报告类型与学习侧重
-当前报告类型: {report_type}
-学习侧重维度:
-- architecture (技术架构): 依赖图 / 调用链 / 分层模式 / 设计模式 / 部署拓扑 / 数据流
-- design (概要设计): 模块划分 / 接口契约 / 核心流程 / 异常处理 / 数据模型
-- requirements (需求): 功能边界 / 用户故事 / 验收标准 / 业务流程
-- testcase (测试用例): 可测试点 / 边界条件 / 异常路径 / 测试覆盖盲区
-- optimization (系统优化): 性能瓶颈 / 资源消耗 / 扩展性限制 / 优化机会
-- performance (性能分析): 热点函数 / 时间复杂度 / 内存分配 / IO 模式
-- defect (系统缺陷): 异常处理 / 错误传播 / 资源泄漏 / 并发隐患
-- api_doc (API 文档): 公开接口 / 请求响应模型 / 认证授权 / 错误码 / 版本治理
+{learning_focus}
 
 # 文件索引
 {file_index}
@@ -68,7 +61,7 @@ CODE_LEARNING_PROMPT = """你是 {role_name}. {description}
 # v9 术语词典 (代码标识符 + 强制保留原文术语, 禁止翻译)
 {glossary_text}
 
-# v9 HTTP 端点全集 (从 AST 提取, summary 必须完全对齐)
+# v9 HTTP 端点全集 (从 AST 提取, 当前类型若涉及接口则必须对齐)
 {endpoints_text}
 
 # v9 枚举定义全集 (从 AST 提取, errorCode 引用必须来自此清单)
@@ -81,10 +74,10 @@ CODE_LEARNING_PROMPT = """你是 {role_name}. {description}
 {scopes_text}
 
 # 工作原则
-1. 所有引用必须带「文件路径:行号」精确坐标 (如 src/main.py:42), 路径必须使用仓库根相对路径 (如 API/Controllers/UserManagement/UserController.cs), 保留原始 PascalCase 大小写
+1. 所有引用必须带「文件路径:行号」精确坐标 (如 src/main.py:42), 路径必须使用仓库根相对路径, 保留原始大小写
 2. 区分「确定性事实(来自代码)」与「推测(标注 confidence: low/medium/high)」
-3. 优先依赖符号签名 (类/函数/方法) 推断架构, 只在必要时引用完整代码块
-4. 识别入口点 / 核心模块 / 关键依赖 / 数据流 / 控制流 / 设计模式
+3. 优先依赖符号签名 (类/函数/方法) 推断, 只在必要时引用完整代码块
+4. 仅围绕当前报告类型的学习侧重组织结论; 禁止写成覆盖所有文档类型的「万能架构摘要」
 5. 利用「仓库符号地图」快速定位模块边界与依赖关系, 减少对完整代码块的依赖
 
 # v10-P0-5 路径引用硬约束 (必须遵守, 违反将被后置校验修正)
@@ -95,7 +88,7 @@ CODE_LEARNING_PROMPT = """你是 {role_name}. {description}
    - 错误: `/Controllers/UserManagement/UserController.cs` (开头多余 /)
    - 错误: `D:\\Projects\\...\\UserController.cs` (绝对路径)
    - 错误: `UserController.cs` (无目录路径)
-2. **路径前缀保留**: 路径必须保留仓库一级子目录名 (如 `API/`, `Models/`, `Admin/`, `Agents/`), 不能省略
+2. **路径前缀保留**: 路径必须保留仓库一级子目录名, 不能省略
 3. **路径分隔符统一**: 必须使用正斜杠 `/`, 禁止使用反斜杠 `\\`
 4. **行号引用格式**: 文件路径 + 冒号 + 行号, 如 `API/Controllers/UserController.cs:42`
 5. **禁止泄露 docbot 自身路径**: 文档中禁止出现以下路径 (与目标仓库无关, 出现即视为幻觉):
@@ -111,26 +104,23 @@ CODE_LEARNING_PROMPT = """你是 {role_name}. {description}
    - 错误示例: 把 PascalCase 项目名翻译为中文短语
    - 正确做法: 直接使用 project_metadata 中的 project_name 原文
 2. **代码符号禁止翻译**: 术语词典中的 class_names / method_names / enum_constants / forced_original_terms 必须保留英文原文
-   - 例如: Agent 不能翻译为 "智能体" 或 "智能体（Agent）"
-   - 例如: Trace 不能翻译为 "追踪", Observation 不能翻译为 "观测", Score 不能翻译为 "评分"
-3. **路径禁止翻译禁止小写化**: 术语词典中的 file_paths 必须保留原始 PascalCase 大小写
+3. **路径禁止翻译禁止小写化**: 术语词典中的 file_paths 必须保留原始大小写
 4. **禁止中英对照翻译模式**: 禁止使用 `中文（英文）` 或 `中文(英文)` 翻译代码符号
-   - 错误示例: "智能体（Agent）" / "追踪（Trace）"
-   - 正确做法: 直接使用英文原文 "Agent" / "Trace"
 
 # 输出要求
-长度控制在 20000 字以内, 必须覆盖后续文档撰写所需的全部信息.
+长度控制在 20000 字以内, 必须覆盖当前报告类型后续撰写所需的全部信息 (而非所有文档类型).
 
 # 输出格式 (严格 JSON, 不要 markdown 代码块)
+# 公共四字段必须保留; 其后为当前报告类型专属字段 (无证据可写空列表或 insufficient_evidence)
 {{
-  "summary": "Markdown 格式的整体摘要, 含项目概述/技术栈/架构模式/核心模块/数据流/关键发现 6 个二级章节, 每个事实带文件路径:行号引用",
+  "summary": "Markdown 格式摘要: 必须围绕当前报告类型学习侧重组织章节, 每个事实带文件路径:行号引用",
   "key_modules": [
     {{"name": "模块名", "path": "src/xxx/yyy.py", "responsibility": "职责描述", "key_symbols": ["函数/类名"], "confidence": "high"}}
   ],
   "dependencies": [
     {{"from": "模块A", "to": "模块B", "type": "import|call|inherit", "evidence": "src/a.py:10"}}
   ],
-  "architecture_notes": "架构笔记: 设计模式 / 数据流 / 关键约定 / 演进建议, Markdown 格式, 带文件路径:行号引用"
+  "architecture_notes": "与当前报告类型相关的补充笔记 (Markdown), 带文件路径:行号引用; 非 architecture 类型时勿写成万能架构综述"{output_schema_extra}
 }}
 """
 
@@ -841,6 +831,9 @@ MULTI_PERSPECTIVE_SYNTHESIS_PROMPT = """你是 {role_name}. {description}
 
 你的任务: 综合 {perspective_count} 个视角的问答结果, 输出统一的结构化代码学习摘要, 用于撰写 {report_type} 文档.
 
+# 报告类型与学习侧重
+{learning_focus}
+
 # 各视角问答结果
 {perspective_qa}
 
@@ -857,19 +850,19 @@ MULTI_PERSPECTIVE_SYNTHESIS_PROMPT = """你是 {role_name}. {description}
 1. 整合多视角发现, 去重并保留各视角独特洞察
 2. 所有引用必须带「文件路径:行号」精确坐标
 3. 区分「确定性事实(来自代码)」与「推测(标注 confidence: low/medium/high)」
-4. 识别入口点 / 核心模块 / 关键依赖 / 数据流 / 控制流 / 设计模式
+4. 仅围绕当前报告类型的学习侧重组织结论; 禁止写成「万能架构摘要」
 5. 长度控制在 20000 字以内
 
 # 输出格式 (严格 JSON, 不要 markdown 代码块)
 {{
-  "summary": "Markdown 格式的整体摘要, 含项目概述/技术栈/架构模式/核心模块/数据流/关键发现 6 个二级章节, 每个事实带文件路径:行号引用",
+  "summary": "Markdown 格式摘要: 必须围绕当前报告类型学习侧重组织章节, 每个事实带文件路径:行号引用",
   "key_modules": [
     {{"name": "模块名", "path": "src/xxx/yyy.py", "responsibility": "职责描述", "key_symbols": ["函数/类名"], "confidence": "high"}}
   ],
   "dependencies": [
     {{"from": "模块A", "to": "模块B", "type": "import|call|inherit", "evidence": "src/a.py:10"}}
   ],
-  "architecture_notes": "架构笔记: 设计模式 / 数据流 / 关键约定 / 演进建议, Markdown 格式, 带文件路径:行号引用"
+  "architecture_notes": "与当前报告类型相关的补充笔记 (Markdown), 带文件路径:行号引用"{output_schema_extra}
 }}
 """
 

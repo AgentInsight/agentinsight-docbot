@@ -1,0 +1,32 @@
+{
+  "session_id": "3e0a3495-99ac-4bf6-a150-e27ff99feee3",
+  "elapsed_s": 1317.1119735240936,
+  "reports": [
+    {
+      "report_id": "0017e6b8-84f9-4027-b4b9-2054ab3fbe27",
+      "report_type": "requirements",
+      "title": "AgentInsightService 产品需求文档（PRD）",
+      "summary": "本文档为 AgentInsightService 产品需求文档，定义面向 AI Agent 的可观测性与运营管理平台。系统提供 Trace、Observation、Score 数据模型的采集、存储、查询与分析，支持 Organization→Project 两级多租户 SaaS 运营（用户、角色、支付、公告、告警）。文档涵盖产品定位、用户分析、功能/非功能/接口/数据需求、约束、优先级路线图及风险依赖，共 76 个 API 端点，P0-P3 优先级规划，并附术语词典与追踪矩阵。",
+      "download_urls": {
+        "markdown": "/v1/reports/0017e6b8-84f9-4027-b4b9-2054ab3fbe27/download?format=markdown",
+        "html": "/v1/reports/0017e6b8-84f9-4027-b4b9-2054ab3fbe27/download?format=html",
+        "pdf": "/v1/reports/0017e6b8-84f9-4027-b4b9-2054ab3fbe27/download?format=pdf",
+        "docx": "/v1/reports/0017e6b8-84f9-4027-b4b9-2054ab3fbe27/download?format=docx",
+        "json": "/v1/reports/0017e6b8-84f9-4027-b4b9-2054ab3fbe27/download?format=json"
+      }
+    },
+    {
+      "report_id": "e8dfc24f-0334-4bd4-8b72-51e87f7bc448",
+      "report_type": "api_doc",
+      "title": "AgentInsightService RESTful API 参考文档",
+      "summary": "本文档为 AgentInsightService 的 RESTful API 参考，涵盖用户、组织、项目、Agent、支付、数据指标等模块的接口定义、认证授权（JWT、API Key、微信登录）、通用约定、错误码、限流配额、版本管理及 SDK 示例。适用于 AI 应用开发者与集成方，帮助其快速对接系统。",
+      "download_urls": {
+        "markdown": "/v1/reports/e8dfc24f-0334-4bd4-8b72-51e87f7bc448/download?format=markdown",
+        "html": "/v1/reports/e8dfc24f-0334-4bd4-8b72-51e87f7bc448/download?format=html",
+        "pdf": "/v1/reports/e8dfc24f-0334-4bd4-8b72-51e87f7bc448/download?format=pdf",
+        "docx": "/v1/reports/e8dfc24f-0334-4bd4-8b72-51e87f7bc448/download?format=docx",
+        "json": "/v1/reports/e8dfc24f-0334-4bd4-8b72-51e87f7bc448/download?format=json"
+      }
+    }
+  ]
+}
