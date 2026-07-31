@@ -63,6 +63,18 @@ async def learn_code_multi_perspective(
     file_contents: str,
     code_graph_obj: CodeGraph,
     settings: Any | None = None,
+    project_metadata: dict | None = None,
+    project_metadata_text: str = "",
+    terminology_glossary: dict | None = None,
+    glossary_text: str = "",
+    http_endpoints: list | None = None,
+    enum_definitions: list | None = None,
+    endpoints_text: str = "",
+    enums_text: str = "",
+    scopes: dict | None = None,
+    scopes_text: str = "",
+    config_specs: dict | None = None,
+    config_specs_text: str = "",
 ) -> dict:
     """多视角代码审问主入口.
 
@@ -103,7 +115,8 @@ async def learn_code_multi_perspective(
         )
 
         # 准备共享上下文
-        repo_map = generate_repo_map(repo_path, file_index)
+        # v6-P0-C: 传 code_graph_obj 启用 PageRank 排序 (核心模块优先)
+        repo_map = generate_repo_map(repo_path, file_index, code_graph=code_graph_obj)
         code_graph_text = format_code_graph_for_prompt(code_graph_obj)
         file_index_summary = file_index.get("summary", "")
 
@@ -215,14 +228,55 @@ async def learn_code_multi_perspective(
             "dependencies": dependencies,
             "architecture_notes": parsed.get("architecture_notes", synthesis_result),
             "repo_path": repo_path,
+            # v5-P0-A: 补充 repo_map 和 code_graph, 供 SymbolValidator / SignatureExtractor 消费
+            # (与 code_learner.py 单视角分支保持一致, 防止多视角分支绕过 P0-A 修复)
+            "repo_map": repo_map,  # str: tree-sitter 符号地图文本
+            "code_graph": {
+                "nodes": [
+                    {
+                        "name": n.name,
+                        "file_path": n.file_path,
+                        "kind": n.kind,
+                        "signature": n.signature,
+                    }
+                    for n in code_graph_obj.nodes.values()
+                ],
+                "edges": [
+                    {
+                        "source": e.source,
+                        "target": e.target,
+                        "edge_type": e.edge_type,
+                        "evidence": e.evidence,
+                    }
+                    for e in code_graph_obj.edges
+                ],
+                "module_deps": {
+                    k: sorted(v) for k, v in code_graph_obj.module_deps.items()
+                },
+            },
+            # v12: 与单视角 learn_code 对齐, 保留 AST 端点/术语/scope 等事实字段
+            "project_metadata": project_metadata or {},
+            "project_metadata_text": project_metadata_text,
+            "terminology_glossary": terminology_glossary or {},
+            "glossary_text": glossary_text,
+            "http_endpoints": http_endpoints or [],
+            "enum_definitions": enum_definitions or [],
+            "endpoints_text": endpoints_text,
+            "enums_text": enums_text,
+            "scopes": scopes or {},
+            "scopes_text": scopes_text,
+            "config_specs": config_specs or {},
+            "config_specs_text": config_specs_text,
         }
         span.update(output={"summary_length": len(learning_result["summary"])})
         logger.info(
             "multi_perspective_learning 全部完成: report_type=%s, "
-            "valid_perspectives=%d, summary_length=%d",
+            "valid_perspectives=%d, summary_length=%d, repo_map_length=%d, code_graph_nodes=%d",
             report_type,
             len(valid_qa_list),
             len(learning_result["summary"]),
+            len(repo_map),
+            len(code_graph_obj.nodes),
         )
         return learning_result
 

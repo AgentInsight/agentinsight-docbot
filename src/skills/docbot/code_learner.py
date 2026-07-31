@@ -178,16 +178,8 @@ async def learn_code(
             report_type,
         )
 
-        # 4.5 P1-5.2.1: 生成 tree-sitter 仓库地图 (失败降级为空, 不阻断主流程)
-        repo_map = generate_repo_map(repo_path, file_index)
-        logger.info(
-            "learn_code 步骤4.5: repo_map 长度=%d (report_type=%s)",
-            len(repo_map),
-            report_type,
-        )
-        span.update(metadata={"repo_map_length": len(repo_map)})
-
         # 4.6 P1-5.2.2: 构建代码知识图谱 (模块依赖 / 调用关系 / 继承链)
+        # v6-P0-C: 调整顺序, 先构建 code_graph, 再用其 PageRank 排序生成 repo_map
         code_graph_obj = build_code_graph(repo_path, file_index)
         code_graph_text = format_code_graph_for_prompt(code_graph_obj)
         logger.info(
@@ -197,12 +189,157 @@ async def learn_code(
             len(code_graph_text),
             report_type,
         )
+
+        # 4.5 P1-5.2.1: 生成 tree-sitter 仓库地图 (失败降级为空, 不阻断主流程)
+        # v6-P0-C: 传 code_graph_obj 启用 PageRank 排序 (核心模块优先)
+        repo_map = generate_repo_map(repo_path, file_index, code_graph=code_graph_obj)
+        logger.info(
+            "learn_code 步骤4.5: repo_map 长度=%d (report_type=%s, PageRank排序)",
+            len(repo_map),
+            report_type,
+        )
+        span.update(metadata={"repo_map_length": len(repo_map)})
         span.update(
             metadata={
                 "code_graph_nodes": len(code_graph_obj.nodes),
                 "code_graph_edges": len(code_graph_obj.edges),
             }
         )
+
+        # v8-P0-A: 提取项目元数据 (品牌名/域名/技术栈)
+        project_metadata: dict[str, Any] = {}
+        project_metadata_text: str = ""
+        try:
+            from src.skills.docbot.project_metadata import (
+                extract_project_metadata,
+                format_metadata_for_prompt,
+            )
+            project_metadata = extract_project_metadata(repo_path, file_index)
+            project_metadata_text = format_metadata_for_prompt(project_metadata)
+            logger.info(
+                "v8-P0-A: project_name=%s brand_count=%d",
+                project_metadata.get("project_name", ""),
+                len(project_metadata.get("brand_names", [])),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("v8-P0-A: 项目元数据提取失败 (降级空): %s", e)
+
+        # v8-P0-B: 提取术语词典 (代码标识符 + 品牌名)
+        terminology_glossary: dict[str, list[str]] = {}
+        glossary_text: str = ""
+        try:
+            from src.skills.docbot.terminology_glossary import (
+                extract_terminology_glossary,
+                format_glossary_for_prompt,
+            )
+            # 将 code_graph 对象转为字典格式
+            code_graph_dict: dict[str, Any] = {"nodes": [], "edges": []}
+            if code_graph_obj is not None:
+                try:
+                    code_graph_dict = {
+                        "nodes": [
+                            {"name": n.name, "kind": n.kind, "file_path": n.file_path}
+                            for n in code_graph_obj.nodes.values()
+                        ],
+                        "edges": [],
+                    }
+                except Exception:  # noqa: BLE001
+                    pass
+            terminology_glossary = extract_terminology_glossary(
+                code_graph=code_graph_dict,
+                repo_map=repo_map,
+                file_index=file_index,
+                project_metadata=project_metadata,
+            )
+            glossary_text = format_glossary_for_prompt(terminology_glossary)
+            logger.info(
+                "v8-P0-B: glossary_terms=%d",
+                len(terminology_glossary.get("all_terms", [])),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("v8-P0-B: 术语词典提取失败 (降级空): %s", e)
+
+        # v8-P0-C: AST 结构感知搜索 (HTTP 端点 + 枚举定义)
+        http_endpoints: list[dict[str, Any]] = []
+        enum_definitions: list[dict[str, Any]] = []
+        endpoints_text: str = ""
+        enums_text: str = ""
+        domain_symbols: dict[str, list[str]] = {"class_names": [], "table_names": []}
+        literal_api_routes: list[str] = []
+        try:
+            from src.skills.docbot.ast_search import (
+                search_http_endpoints,
+                search_enum_definitions,
+                format_endpoints_for_prompt,
+                format_enums_for_prompt,
+                search_domain_symbols,
+                search_literal_api_routes,
+            )
+            http_endpoints = search_http_endpoints(repo_path, file_index)
+            enum_definitions = search_enum_definitions(repo_path, file_index)
+            endpoints_text = format_endpoints_for_prompt(http_endpoints)
+            enums_text = format_enums_for_prompt(enum_definitions)
+            domain_symbols = search_domain_symbols(repo_path)
+            literal_api_routes = search_literal_api_routes(repo_path)
+            existing = {
+                str(ep.get("route") or "").lower().rstrip("/")
+                for ep in http_endpoints
+                if isinstance(ep, dict)
+            }
+            for r in literal_api_routes:
+                key = str(r).lower().rstrip("/")
+                if key and key not in existing:
+                    http_endpoints.append(
+                        {
+                            "http_method": "ANY",
+                            "route": r,
+                            "method_name": "literal_route",
+                            "class_name": "LiteralRoute",
+                            "summary": "源码字面量路由",
+                        }
+                    )
+                    existing.add(key)
+            logger.info(
+                "v8-P0-C: endpoints=%d enums=%d domain_classes=%d literal_routes=%d",
+                len(http_endpoints),
+                len(enum_definitions),
+                len(domain_symbols.get("class_names", [])),
+                len(literal_api_routes),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("v8-P0-C: AST 搜索失败 (降级空): %s", e)
+
+        # v8-P0-E: Scope 识别 (monorepo 子项目边界)
+        scopes: dict[str, Any] = {}
+        scopes_text: str = ""
+        try:
+            from src.skills.docbot.scope_detector import (
+                detect_scopes,
+                format_scopes_for_prompt,
+            )
+            scopes = detect_scopes(repo_path)
+            scopes_text = format_scopes_for_prompt(scopes)
+            logger.info(
+                "v8-P0-E: is_monorepo=%s scope_count=%d",
+                scopes.get("is_monorepo", False),
+                len(scopes.get("scopes", [])),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("v8-P0-E: Scope 识别失败 (降级空): %s", e)
+
+        # v8-P0-H: 配置文件技术规格提取
+        config_specs: dict[str, Any] = {}
+        config_specs_text: str = ""
+        try:
+            from src.skills.docbot.project_metadata import (
+                extract_config_specs,
+                format_config_specs_for_prompt,
+            )
+            config_specs = extract_config_specs(repo_path)
+            config_specs_text = format_config_specs_for_prompt(config_specs)
+            logger.info("v8-P0-H: config_specs_count=%d", len(config_specs))
+        except Exception as e:  # noqa: BLE001
+            logger.warning("v8-P0-H: 配置规格提取失败 (降级空): %s", e)
 
         # 4.7 P2-5.4.1: 多视角代码审问分支 (开关开启时调用, 失败降级到单视角)
         if _is_multi_perspective_enabled(settings):
@@ -226,6 +363,19 @@ async def learn_code(
                     file_contents=file_contents,
                     code_graph_obj=code_graph_obj,
                     settings=settings,
+                    # v12: 透传 AST/元数据字段, 避免多视角分支丢失端点清单
+                    project_metadata=project_metadata,
+                    project_metadata_text=project_metadata_text,
+                    terminology_glossary=terminology_glossary,
+                    glossary_text=glossary_text,
+                    http_endpoints=http_endpoints,
+                    enum_definitions=enum_definitions,
+                    endpoints_text=endpoints_text,
+                    enums_text=enums_text,
+                    scopes=scopes,
+                    scopes_text=scopes_text,
+                    config_specs=config_specs,
+                    config_specs_text=config_specs_text,
                 )
             except Exception as e:
                 logger.warning(
@@ -240,6 +390,7 @@ async def learn_code(
                 )
 
         # 5. 构造 prompt (注入 persona + report_type + 文件索引 + 文件内容 + 仓库地图 + 代码图谱)
+        # v9-P0-A: 同时注入 v8 上下文 (project_metadata/glossary/endpoints/enums/config_specs/scopes)
         prompt = prompt_template.format(
             report_type=report_type,
             role_name=role_name,
@@ -248,9 +399,16 @@ async def learn_code(
             file_contents=file_contents[:500_000],  # 截断防止超长
             repo_map=repo_map,
             code_graph=code_graph_text,
+            # v9 新增 kwargs (从 v8 提取的上下文)
+            project_metadata_text=project_metadata_text,
+            glossary_text=glossary_text,
+            endpoints_text=endpoints_text,
+            enums_text=enums_text,
+            config_specs_text=config_specs_text,
+            scopes_text=scopes_text,
         )
         logger.info(
-            "learn_code 步骤5: prompt 构造完成, 长度=%d (report_type=%s)",
+            "learn_code 步骤5: prompt 构造完成, 长度=%d (report_type=%s, v9 kwargs 已注入)",
             len(prompt),
             report_type,
         )
@@ -270,6 +428,9 @@ async def learn_code(
                 session_id=llm_session_id,
                 span_name=f"docbot.code_learning.{report_type}",
                 step="code_learning",
+                # v14: 避免 4000 截断导致 JSON 解析失败; 关闭 thinking 保留输出额度
+                max_tokens=getattr(settings, "strategic_token_limit", 8192) or 8192,
+                reasoning_effort="none",
             )
         except Exception as e:
             logger.exception(
@@ -328,15 +489,58 @@ async def learn_code(
             "dependencies": dependencies,
             "architecture_notes": parsed.get("architecture_notes", response.content),
             "repo_path": repo_path,
+            # v5-P0-A: 补充 repo_map 和 code_graph, 供 SymbolValidator / SignatureExtractor 消费
+            "repo_map": repo_map,  # str: tree-sitter 符号地图文本
+            "code_graph": {
+                "nodes": [
+                    {
+                        "name": n.name,
+                        "file_path": n.file_path,
+                        "kind": n.kind,
+                        "signature": n.signature,
+                    }
+                    for n in code_graph_obj.nodes.values()
+                ],
+                "edges": [
+                    {
+                        "source": e.source,
+                        "target": e.target,
+                        "edge_type": e.edge_type,
+                        "evidence": e.evidence,
+                    }
+                    for e in code_graph_obj.edges
+                ],
+                "module_deps": {
+                    k: sorted(v) for k, v in code_graph_obj.module_deps.items()
+                },
+            },
+            # v8 新增字段
+            "project_metadata": project_metadata,
+            "project_metadata_text": project_metadata_text,
+            "terminology_glossary": terminology_glossary,
+            "glossary_text": glossary_text,
+            "http_endpoints": http_endpoints,
+            "enum_definitions": enum_definitions,
+            "endpoints_text": endpoints_text,
+            "enums_text": enums_text,
+            "scopes": scopes,
+            "scopes_text": scopes_text,
+            "config_specs": config_specs,
+            "config_specs_text": config_specs_text,
+            # v14: 领域符号 + 字面量路由 (终审事实附录)
+            "domain_symbols": domain_symbols,
+            "literal_api_routes": literal_api_routes,
         }
         span.update(output={"summary_length": len(learning_result["summary"])})
         logger.info(
             "learn_code 全部完成: report_type=%s, summary_length=%d, "
-            "key_modules=%d, dependencies=%d",
+            "key_modules=%d, dependencies=%d, repo_map_length=%d, code_graph_nodes=%d",
             report_type,
             len(learning_result["summary"]),
             len(key_modules),
             len(dependencies),
+            len(repo_map),
+            len(code_graph_obj.nodes),
         )
         return learning_result
 

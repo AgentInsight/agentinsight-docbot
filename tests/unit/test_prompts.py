@@ -80,10 +80,12 @@ class TestPromptTemplates:
             assert ph in CODE_LEARNING_PROMPT, f"CODE_LEARNING_PROMPT 缺 {ph}"
 
     def test_outline_refine_prompt_placeholders(self) -> None:
-        """OUTLINE_REFINE_PROMPT 含 8 个占位符."""
+        """OUTLINE_REFINE_PROMPT 含 11 个占位符 (P0-1: 新增 agents_md/readme_md/max_chapters)."""
         for ph in (
             "{role_name}", "{description}", "{report_type}", "{language}",
             "{default_outline}", "{code_summary}", "{key_modules}", "{dependencies}",
+            # P0-1 新增: 产品定位 ground truth + 章节数上限
+            "{agents_md}", "{readme_md}", "{max_chapters}",
         ):
             assert ph in OUTLINE_REFINE_PROMPT, f"OUTLINE_REFINE_PROMPT 缺 {ph}"
 
@@ -152,7 +154,7 @@ class TestGetPrompt:
         assert "{code_graph}" not in prompt
 
     def test_get_prompt_outline_refiner(self) -> None:
-        """get_prompt('outline_refiner', ...) 不抛异常."""
+        """get_prompt('outline_refiner', ...) 不抛异常 (P0-1: 含 agents_md/readme_md/max_chapters)."""
         prompt = get_prompt(
             "outline_refiner",
             role_name="API 文档工程师",
@@ -163,6 +165,9 @@ class TestGetPrompt:
             code_summary="代码学习摘要",
             key_modules=["auth", "api"],
             dependencies=["fastapi", "pydantic"],
+            agents_md="# AGENTS.md\n项目规范内容",
+            readme_md="# README\n产品定位内容",
+            max_chapters=15,
         )
         assert isinstance(prompt, str)
         assert "API 文档工程师" in prompt
@@ -170,7 +175,7 @@ class TestGetPrompt:
         assert "{role_name}" not in prompt
 
     def test_get_prompt_content_filler(self) -> None:
-        """get_prompt('content_filler', ...) 不抛异常."""
+        """get_prompt('content_filler', ...) 不抛异常 (P0: 含 key_modules/dependencies)."""
         prompt = get_prompt(
             "content_filler",
             chapter_title="概述",
@@ -181,6 +186,8 @@ class TestGetPrompt:
             language="zh",
             code_summary="代码摘要",
             rag_context="RAG 检索结果",
+            key_modules=["src/server.py: 入口"],
+            dependencies=["fastapi, pydantic"],
         )
         assert isinstance(prompt, str)
         assert "概述" in prompt

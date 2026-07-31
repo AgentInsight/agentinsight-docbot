@@ -391,6 +391,11 @@ def _extract_symbols_from_tree(
             kind = "class"
         elif sig.startswith(("def ", "async def ")):
             kind = "function" if depth == 0 else "method"
+        elif sig.startswith(("public ", "private ", "protected ", "internal ")):
+            # O4-P0-A: C# / Java 方法签名
+            kind = "method" if depth > 0 else "function"
+        elif "class " in sig.split("(")[0] and sig.strip().endswith(("{", ":")):
+            kind = "class"
         else:
             kind = "function"
         # 行号无法从签名获取, 用 0 占位 (图谱主要用关系, 行号用于引用)
@@ -435,7 +440,102 @@ def _extract_name_from_signature(sig: str) -> str:
     m = re.match(r"func\s+(?:\([^)]*\)\s+)?(\w+)", sig)
     if m:
         return m.group(1)
+    # O4-P0-A: C# / Java 方法签名 (public/private/protected/internal/static 修饰符)
+    # 示例: "public async Task<IActionResult> Login(...)" -> "Login"
+    #       "public class UserController : ControllerBase" -> "UserController"
+    m = re.match(r"(?:public|private|protected|internal|static|async|virtual|override|sealed|abstract)\s+(?:(?:async\s+)?(?:Task<[^>]+>|IActionResult|IActionResult|void|bool|string|int|long|double|decimal|object|\w+(?:<[^>]+>)?))\s+(\w+)\s*\(", sig)
+    if m:
+        return m.group(1)
+    # C# class/interface/struct/enum 声明
+    m = re.match(r"(?:public|internal|private|protected)?\s*(?:abstract\s+|sealed\s+|static\s+)?(?:class|interface|struct|enum|record)\s+(\w+)", sig)
+    if m:
+        return m.group(1)
+    # O4-P0-A: C# namespace 声明
+    m = re.match(r"namespace\s+([\w.]+)", sig)
+    if m:
+        return m.group(1)
     return ""
+
+
+# O4-P0-A: C# 代码关系提取 (using 指令 / 类继承 / 方法调用)
+def _extract_csharp_relations(
+    file_path: str,
+    content: str,
+    symbols: list[SymbolNode],
+) -> list[GraphEdge]:
+    """O4-P0-A: C# 代码关系提取 (using / 继承 / 调用).
+
+    Args:
+        file_path: 文件相对路径
+        content: 文件文本内容
+        symbols: 该文件已抽取的符号节点列表
+
+    Returns:
+        GraphEdge 列表 (edge_type: import / inherit / call)
+    """
+    import re
+
+    edges: list[GraphEdge] = []
+
+    # 1. using 指令 (C# 的 import)
+    for match in re.finditer(r'^\s*using\s+([\w.]+)\s*;', content, re.MULTILINE):
+        namespace = match.group(1)
+        edges.append(GraphEdge(
+            source=file_path,
+            target=namespace,
+            edge_type="import",
+            evidence=f"{file_path}:using {namespace};",
+        ))
+
+    # 2. 类继承 (class Foo : Bar, IInterface)
+    for match in re.finditer(
+        r'(?:public|internal|private|protected)?\s*(?:abstract\s+|sealed\s+|static\s+)?class\s+(\w+)\s*(?::\s*([\w,\s<>.\[\]]+?))?\s*(?:\{|where)',
+        content,
+    ):
+        class_name = match.group(1)
+        bases_str = match.group(2) or ""
+        for base in bases_str.split(","):
+            base = base.strip().split(".")[-1]  # 取类型名 (去掉命名空间前缀)
+            if base and base != class_name:
+                edges.append(GraphEdge(
+                    source=class_name,
+                    target=base,
+                    edge_type="inherit",
+                    evidence=f"{file_path}:class {class_name} : {base}",
+                ))
+
+    # 3. 接口实现 (interface IFoo : IBar)
+    for match in re.finditer(
+        r'interface\s+(\w+)\s*(?::\s*([\w,\s<>.\[\]]+?))?\s*\{',
+        content,
+    ):
+        iface_name = match.group(1)
+        bases_str = match.group(2) or ""
+        for base in bases_str.split(","):
+            base = base.strip().split(".")[-1]
+            if base and base != iface_name:
+                edges.append(GraphEdge(
+                    source=iface_name,
+                    target=base,
+                    edge_type="inherit",
+                    evidence=f"{file_path}:interface {iface_name} : {base}",
+                ))
+
+    # 4. 方法调用 (简化: 匹配 Identifier.MethodName( 模式, 避免匹配控制流关键字)
+    _KEYWORDS = frozenset({"if", "for", "foreach", "while", "switch", "catch", "return", "using", "lock", "new", "out", "ref"})
+    for match in re.finditer(r'\b(\w+)\.(\w+)\s*\(', content):
+        obj = match.group(1)
+        method = match.group(2)
+        if obj in _KEYWORDS or method in _KEYWORDS:
+            continue
+        edges.append(GraphEdge(
+            source=obj,
+            target=method,
+            edge_type="call",
+            evidence=f"{file_path}:{obj}.{method}()",
+        ))
+
+    return edges[:_MAX_EDGES_PER_FILE]  # 限制单文件边数
 
 
 # ========== 图谱构建 ==========
@@ -523,7 +623,7 @@ def build_code_graph(
         for sym in symbols:
             graph.add_node(sym)
 
-        # 2. 提取关系 (仅 Python 深度提取, 其他语言降级)
+        # 2. 提取关系 (Python + C# 深度提取, 其他语言降级)
         if lang == "python":
             # import 依赖
             imports = _extract_python_imports(tree.root_node, source_bytes)
@@ -557,6 +657,18 @@ def build_code_graph(
                         evidence=f"{rel_path}:L{line}",
                     )
                 )
+        elif lang == "csharp":
+            # O4-P0-A: C# 关系提取 (using / 继承 / 调用)
+            cs_edges = _extract_csharp_relations(rel_path, content, symbols)
+            for edge in cs_edges:
+                if edge.edge_type == "import":
+                    graph.add_module_dep(
+                        source_module=edge.source,
+                        target_module=edge.target,
+                        evidence=edge.evidence,
+                    )
+                else:
+                    graph.add_edge(edge)
 
         parsed_count += 1
 
@@ -569,6 +681,118 @@ def build_code_graph(
     )
 
     return graph
+
+
+# ========== v6-P0-C: PageRank 符号排序 (借鉴 Aider get_ranked_tags) ==========
+
+
+def pagerank_symbols(
+    code_graph: CodeGraph,
+    *,
+    alpha: float = 0.85,
+    max_iter: int = 100,
+    tol: float = 1e-06,
+) -> dict[str, float]:
+    """v6-P0-C: 基于 PageRank 计算符号重要性 (借鉴 Aider get_ranked_tags).
+
+    构建有向图:
+    - 节点 = 符号全限定名 (file_path:name)
+    - 边 = 调用关系 + 继承关系 + 模块依赖
+
+    PageRank 假设: 被重要符号调用/继承的符号也是重要的.
+    高 PageRank 符号 = 核心模块 (如 InsightOrchestrator, BullMqService).
+
+    Args:
+        code_graph: 代码知识图谱
+        alpha: 阻尼系数 (0.85 标准值)
+        max_iter: 最大迭代次数
+        tol: 收敛阈值
+
+    Returns:
+        {qualified_name: pagerank_score} 字典, 分数越高越重要
+    """
+    if not code_graph.nodes:
+        return {}
+
+    # 构建邻接表 (有向图)
+    # PageRank: 节点 u 指向节点 v 表示 u "引用" v (调用/继承/依赖)
+    # 被引用多的节点 PageRank 高
+    import collections
+
+    out_edges: dict[str, set[str]] = collections.defaultdict(set)
+    in_edges: dict[str, set[str]] = collections.defaultdict(set)
+    nodes_set = set(code_graph.nodes.keys())
+
+    for edge in code_graph.edges:
+        src = edge.source
+        tgt = edge.target
+        # 仅当两端都是已知节点时才加边 (模块依赖边可能指向外部)
+        if src in nodes_set and tgt in nodes_set and src != tgt:
+            out_edges[src].add(tgt)
+            in_edges[tgt].add(src)
+
+    # 迭代 PageRank
+    n = len(nodes_set)
+    if n == 0:
+        return {}
+
+    # 初始化: 均匀分布
+    rank: dict[str, float] = {node: 1.0 / n for node in nodes_set}
+
+    for _ in range(max_iter):
+        new_rank: dict[str, float] = {}
+        dangling_sum = 0.0
+        # 收集悬挂节点 (无出边) 的 PageRank 之和
+        for node in nodes_set:
+            if not out_edges.get(node):
+                dangling_sum += rank[node]
+
+        for node in nodes_set:
+            # 来自入边的贡献
+            incoming = 0.0
+            for src in in_edges.get(node, set()):
+                out_deg = len(out_edges.get(src, set()))
+                if out_deg > 0:
+                    incoming += rank[src] / out_deg
+            # 悬挂节点贡献均分
+            dangling_contrib = dangling_sum / n if n > 0 else 0.0
+            # PageRank 公式
+            new_rank[node] = (1 - alpha) / n + alpha * (incoming + dangling_contrib)
+
+        # 收敛检查
+        diff = sum(abs(new_rank[node] - rank[node]) for node in nodes_set)
+        rank = new_rank
+        if diff < tol:
+            break
+
+    return rank
+
+
+def get_top_symbols_by_pagerank(
+    code_graph: CodeGraph,
+    top_n: int = 50,
+) -> list[tuple[SymbolNode, float]]:
+    """v6-P0-C: 按 PageRank 返回 Top-N 符号 (供 repo_map 排序使用).
+
+    Args:
+        code_graph: 代码知识图谱
+        top_n: 返回前 N 个符号
+
+    Returns:
+        [(SymbolNode, pagerank_score), ...] 按 PageRank 降序
+    """
+    ranks = pagerank_symbols(code_graph)
+    if not ranks:
+        return []
+
+    # 按 PageRank 降序排序
+    sorted_syms = sorted(ranks.items(), key=lambda x: x[1], reverse=True)[:top_n]
+    result: list[tuple[SymbolNode, float]] = []
+    for qualified_name, score in sorted_syms:
+        node = code_graph.nodes.get(qualified_name)
+        if node:
+            result.append((node, score))
+    return result
 
 
 def format_code_graph_for_prompt(graph: CodeGraph, *, max_chars: int = _DEFAULT_MAX_CHARS) -> str:

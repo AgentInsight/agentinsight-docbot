@@ -29,19 +29,21 @@ chapters:
     purpose: 提供基础信息、API 分类与清单
     sections: []
     key_points:
-      - 基础信息（Base URL、HTTPS、JSON、ISO 8601）
-      - API 分类（/users、/orders、/products、/auth、/files）
-      - API 清单（API-NNN/方法/路径/描述/鉴权）
-      - 通用响应结构（code/message/data/traceId）
-      - OpenAPI 规范（Swagger UI、Postman Collection）
+      # v8-P0-D: 去硬编码, 改为"从代码提取"引导语, 消除 LLM 照搬通用示例污染
+      - 基础信息（Base URL 从代码配置提取、数据格式 JSON、时间格式 ISO 8601、字符集 UTF-8）
+      - API 分类（从代码 Controller/路由模块动态推导, 不预设具体路径, 见 {endpoints_text}）
+      - API 清单（API-NNN/方法/路径/描述/鉴权, 必须覆盖所有 HTTP 端点, 见 {endpoints_text}）
+      - 通用响应结构（从代码 ApiResponse<T>/Result<T> 类提取真实字段, 不预设字段名）
+      - OpenAPI 规范（Swagger UI 入口从代码配置提取, 不预设 URL）
     example: |
       ```json
+      // 通用响应结构必须从代码 ApiResponse<T> / Result<T> 类提取真实字段
+      // 禁止使用 code/message/traceId 等预设字段名, 必须使用代码中的实际字段名
+      // 字段示例仅作格式参考, 实际字段名/类型由代码决定
       {
-        "code": 0,
-        "message": "success",
-        "data": { },
-        "traceId": "abc-123",
-        "timestamp": "2026-07-20T10:00:00Z"
+        "<从代码提取的字段1>": "<类型>",
+        "<从代码提取的字段2>": { },
+        "<从代码提取的字段3>": "<类型>"
       }
       ```
 
@@ -61,33 +63,35 @@ chapters:
     purpose: 统一命名、HTTP 方法语义、版本、分页、过滤与幂等性
     sections: []
     key_points:
-      - 命名规范（路径 kebab-case、字段 camelCase）
-      - HTTP 方法语义（GET/POST/PUT/PATCH/DELETE）
-      - 版本策略（/v1/、兼容期 6 月、Deprecation Header）
-      - 分页规范（cursor/limit 默认 20 最大 100）
-      - 过滤排序（?status=、?sort=、?fields=）
-      - 幂等性（Idempotency-Key、保留 48h）
-      - 国际化（Accept-Language、X-Timezone）
-      - 请求头约定（Authorization、X-Request-Id）
+      # v8-P0-D: 去硬编码, 技术规格必须从代码配置文件提取
+      - 命名规范（从代码 Controller/路由/DTO 推导实际命名风格, 不预设 kebab-case/camelCase）
+      - HTTP 方法语义（GET/POST/PUT/PATCH/DELETE, 标准语义）
+      - 版本策略（从代码配置/路由前缀提取, 不预设 /v1/ 或兼容期, 见 {config_specs_text}）
+      - 分页规范（从代码配置提取真实参数名和默认值, 如 page/pageSize 而非预设 cursor/limit, 见 {config_specs_text}）
+      - 过滤排序（从代码路由/DTO 提取实际查询参数名, 不预设 ?status=/?sort=）
+      - 幂等性（从代码提取实际幂等键名和保留时长, 见 {config_specs_text}）
+      - 国际化（Accept-Language、X-Timezone, 若代码无相关支持则本节标注"未实现"）
+      - 请求头约定（从代码 Middleware/Filter 提取实际请求头名, 不预设 Authorization/X-Request-Id）
 
   - idx: 5
     title: 错误处理
     purpose: 定义错误响应结构、HTTP 状态码与业务错误码
     sections: []
     key_points:
-      - 错误响应结构（code/message/details/traceId）
-      - HTTP 状态码（200/400/401/403/404/429/500）
-      - 业务错误码分段（40xxx 用户/41xxx 订单/42xxx 商品）
-      - 错误码清单（ERR_40001/40101/40301/40401/42901）
-      - 重试建议（4xx 不重试、5xx 退避、429 Retry-After）
+      # v8-P0-D: 去硬编码, 错误码必须从代码枚举提取
+      - 错误响应结构（从代码 ApiResponse<T>/ExceptionCodes 提取真实字段, 不预设 code/message/details/traceId）
+      - HTTP 状态码（200/400/401/403/404/429/500, 标准语义）
+      - 业务错误码分段（从代码枚举定义提取真实错误码数值和常量名, 见 {enums_text}）
+      - 错误码清单（必须列出代码中所有错误码常量, 见 {enums_text}, 禁止编造分段体系）
+      - 重试建议（4xx 不重试、5xx 退避、429 Retry-After, 标准建议）
     example: |
       ```json
+      // 错误响应结构必须从代码 ApiResponse<T> / ExceptionCodes 真实字段提取
+      // 错误码数值和常量名必须来自 {enums_text}, 禁止使用 40001 等预设示例
       {
-        "code": 40001,
-        "message": "参数缺失：user_id",
-        "details": [{ "field": "user_id", "issue": "required" }],
-        "traceId": "abc-123",
-        "timestamp": "2026-07-20T10:00:00Z"
+        "<从代码提取的错误码字段>": "<数值来自 {enums_text}>",
+        "<从代码提取的消息字段>": "<消息文本>",
+        "<从代码提取的其他字段>": "<值>"
       }
       ```
 
@@ -106,29 +110,25 @@ chapters:
     purpose: 按统一模板详述每个接口的请求、响应、错误码与示例
     sections: []
     key_points:
-      - 详情模板（方法/路径/参数/请求体/响应/示例）
-      - 认证模块（POST /auth/login、/logout、/refresh）
-      - 用户模块（GET/POST/PUT/DELETE /users）
-      - 订单/商品/文件模块（/files/upload multipart）
+      # v8-P0-D: 去硬编码, 接口必须从代码 AST 提取, 不预设模块名
+      - 详情模板（方法/路径/参数/请求体/响应/示例, 每个接口一个卡片）
+      - 接口清单必须与 {endpoints_text} 完全对齐, 禁止遗漏, 禁止编造不存在的接口
+      - 接口分组从代码 Controller/路由模块动态推导, 不预设认证/用户/订单/商品/文件等模块名
+      - 每个接口的请求参数/响应字段必须从代码 DTO/Request/Response 类提取, 不预设字段名
+      - 鉴权方式从代码 [Authorize]/@require_auth 注解提取, 不预设 Bearer Token
     example: |
       ```markdown
-      ### API-NNN <接口名>
-      - **方法**：POST
-      - **路径**：/v1/orders
-      - **鉴权**：Bearer Token
-      #### 请求体
+      ### API-NNN <接口名> (从代码 Controller/路由提取)
+      - **方法**：从代码注解提取 (GET/POST/PUT/DELETE)
+      - **路径**：从代码路由注解提取 (不预设 /v1/orders)
+      - **鉴权**：从代码 [Authorize]/@require_auth 提取
+      #### 请求体 (从代码 DTO 类提取字段, 不预设 productId/quantity)
       ```json
-      { "productId": "string", "quantity": 0 }
+      { "<字段名>": "<类型>" }
       ```
-      #### 201 Created 响应
+      #### 响应 (从代码 ApiResponse<T> 类提取字段)
       ```json
-      { "code": 0, "data": { "orderId": "string", "status": "PENDING" } }
-      ```
-      #### cURL 示例
-      ```bash
-      curl -X POST https://api.<domain>.com/v1/orders \
-        -H "Authorization: Bearer <token>" \
-        -d '{"productId":"prod-001","quantity":2}'
+      { "<字段名>": "<类型>" }
       ```
       ```
 
@@ -137,17 +137,21 @@ chapters:
     purpose: 定义实体清单、字段类型规范、枚举值与公共字段
     sections: []
     key_points:
-      - 实体清单（User/Order/Product 等）
-      - 字段类型（string/int/float/bool/timestamp/uuid/enum）
-      - 枚举值（PENDING/PAID/SHIPPED/COMPLETED/CANCELLED）
-      - 公共字段（id、createdAt、updatedAt、version）
+      # v8-P0-D: 去硬编码, 实体名和枚举值从代码提取
+      - 实体清单（从代码 DTO/Entity/Model 类提取, 不预设 User/Order/Product）
+      - 字段类型（string/int/float/bool/timestamp/uuid/enum, 标准类型）
+      - 枚举值（从代码 enum 定义提取真实值, 见 {enums_text}, 不预设 PENDING/PAID/SHIPPED）
+      - 公共字段（从代码 BaseEntity/AuditableEntity 提取, 不预设 id/createdAt/updatedAt）
 
   - idx: 9
     title: Webhook 与回调
     purpose: 定义事件、注册、签名验证与重试策略
+    source: conditional  # v10-P0-3: 条件性章节, LLM 必须验证代码是否含 webhook 再决定保留/删除
+    refine_reason: "v10: 若 endpoints_text/code_summary 无 webhook/callback 路由, 必须删除 (source=removed), 禁止虚构内容"
     sections: []
     key_points:
-      - Webhook 事件（order.created/paid/shipped）
+      - "v10 条件性章节: 仅当代码学习结果 (code_summary / endpoints_text) 明确包含 webhook/callback 路由时保留, 否则必须删除 (source=removed, refine_reason='代码无 Webhook 路由')"
+      - Webhook 事件（order.created/paid/shipped）  # 仅作示例, 实际事件名从代码提取
       - Webhook 注册（POST /v1/webhooks、url+events）
       - 回调签名（HMAC-SHA256、X-Signature）
       - 重试策略（3 次、指数退避 1s/2s/4s）
@@ -156,9 +160,12 @@ chapters:
   - idx: 10
     title: SDK 与示例
     purpose: 提供官方 SDK、使用示例与 Playground
+    source: conditional  # v10-P0-3: 条件性章节, LLM 必须验证 scope 是否含 SDK 子项目再决定保留/删除
+    refine_reason: "v10: 若 scopes_text 无 SDK 子项目, 必须删除 (source=removed), 禁止虚构内容"
     sections: []
     key_points:
-      - 官方 SDK（Python/JavaScript/Java/Go）
+      - "v10 条件性章节: 仅当 scope_detector 识别到独立 SDK 子项目 (scopes_text 含 is_in_scope=unknown/true 的 sdk 目录) 时保留, 否则必须删除"
+      - 官方 SDK（Python/JavaScript/Java/Go）  # 仅作示例, 实际语言从代码提取
       - SDK 示例（client.orders.create(...)）
       - Postman/Insomnia（Collection、Environment）
       - cURL 示例库

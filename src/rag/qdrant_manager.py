@@ -272,22 +272,31 @@ class QdrantManager:
         cached = _namespace_cache.get(namespace)
         if cached is not None:
             has_data, ts = cached
-            if time.time() - ts < _NAMESPACE_CACHE_TTL:
-                logger.debug(
-                    "namespace %s 可用性缓存命中: has_data=%s (缓存年龄 %.0fs)",
-                    namespace,
-                    has_data,
-                    time.time() - ts,
-                )
-                return has_data
+            # v5-P0-B: 仅 True 结果走长 TTL 缓存; False 结果用短 TTL (60s) 避免陈旧
+            if has_data:
+                if time.time() - ts < _NAMESPACE_CACHE_TTL:
+                    logger.debug(
+                        "namespace %s 可用性缓存命中(True): has_data=True (缓存年龄 %.0fs)",
+                        namespace,
+                        time.time() - ts,
+                    )
+                    return has_data
+            else:
+                if time.time() - ts < 60:
+                    logger.debug(
+                        "namespace %s 可用性缓存命中(False, 短TTL): has_data=False (缓存年龄 %.0fs)",
+                        namespace,
+                        time.time() - ts,
+                    )
+                    return has_data
 
         # 缓存未命中或过期, 调 Qdrant count
         count = await self.count_points_in_namespace(namespace)
         has_data = count > 0
-        # 写入缓存
+        # 写入缓存: True 走长 TTL, False 也写但走短 TTL (60s 后过期重查)
         _namespace_cache[namespace] = (has_data, time.time())
         logger.info(
-            "namespace %s 可用性检查完成: has_data=%s (count=%d, 已缓存 %ds)",
+            "namespace %s 可用性检查完成: has_data=%s (count=%d, True缓存%d秒 / False缓存60秒)",
             namespace,
             has_data,
             count,

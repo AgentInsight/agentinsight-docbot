@@ -41,8 +41,9 @@ class Settings(BaseSettings):
     smart_llm: str = "deepseek/deepseek-v4-flash"
     strategic_llm: str = "deepseek/deepseek-v4-pro"
     fast_token_limit: int = 3000
-    smart_token_limit: int = 6000
-    strategic_token_limit: int = 4000
+    smart_token_limit: int = 8192
+    # deepseek-v4-pro 代码学习需输出完整 JSON；4000 易截断导致解析失败降级
+    strategic_token_limit: int = 8192
     summary_token_limit: int = 700
     max_total_tokens: int = 128000  # 单次研究流程总 token 预算上限
     temperature: float = 0.4
@@ -51,8 +52,8 @@ class Settings(BaseSettings):
     # graph.ainvoke 总超时 (秒, 防止节点卡死永久挂起)
     # docbot 单次报告生成含多节点 LLM 调用 + RAG 检索 + 章节级语义去重 + 并发子图
     # 12 章节架构文档: 12×D(SMART LLM~60s + dedup~5s) + 12×E(FAST LLM~15s) + F + G(SMART~60s)
-    # 实测峰值 ~960s, 留 2x 安全余量 → 1800s (30 分钟)
-    graph_total_timeout: int = 1800
+    # 实测双报告+20章 API 评审可达 ~1800s+; 留余量 → 3600s (60 分钟)
+    graph_total_timeout: int = 3600
     # LLM 响应缓存 (Redis)
     # 仅缓存 temperature=0 的成功响应; 异常/错误响应绝不缓存; 流式响应不缓存.
     llm_response_cache_enabled: bool = True
@@ -166,7 +167,7 @@ class Settings(BaseSettings):
     # 两种模式统一使用项目数据库处理报告限额, 不再调用远程 API
     self_host: bool = True
 
-    # ========== JWT 本地解析 (复用 AgentInsightService JWT 规格) ==========
+    # ========== JWT 本地解析 (HS256 Claims 规格) ==========
     # 密钥仅环境变量注入, 禁止入仓/硬编码
     jwt_signing_key: str = ""  # 从环境变量 JWT_SIGNING_KEY 读取 (HS256 密钥)
     jwt_issuer: str = ""  # 从环境变量 JWT_ISSUER 读取 (签发者)

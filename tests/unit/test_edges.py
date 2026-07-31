@@ -75,9 +75,10 @@ class TestRouteAfterE:
         assert route_after_e(state) == "next_chapter"
 
     def test_returns_done_when_all_chapters_reviewed(self) -> None:
-        """current_chapter_idx >= len(chapters) → 'done'."""
+        """review_idx >= len(chapters) → 'done' (P0: E 循环用独立 review_idx)."""
         state = {
             "current_chapter_idx": 2,
+            "review_idx": 2,  # P0: E 循环基于独立 review_idx
             "chapters": [{"idx": 1}, {"idx": 2}],
             "revision_count": 0,
             "max_revisions_per_chapter": 3,
@@ -119,12 +120,13 @@ class TestRouteAfterE:
         assert route_after_e(state) == "done"
 
     def test_returns_done_at_last_chapter_with_max_revisions(self) -> None:
-        """最后一章节 + revision_count 达上限 → 'done'."""
+        """最后一章节 + revision_count 达上限 → 'done' (P0: 用 review_idx)."""
         state = {
-            "current_chapter_idx": 1,  # 最后一章
+            "current_chapter_idx": 1,  # 最后一章 (D 循环已结束)
+            "review_idx": 1,  # P0: E 循环评审到最后一章
             "chapters": [{"idx": 1}],  # len=1
             "revision_count": 3,
             "max_revisions_per_chapter": 3,
         }
-        # 1 >= 1 (len) → done
+        # review_idx 1 >= 1 (len) → done
         assert route_after_e(state) == "done"

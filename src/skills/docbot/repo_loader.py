@@ -38,6 +38,7 @@ _SKIP_DIRS: frozenset[str] = frozenset(
         ".pytest_cache",
         ".mypy_cache",
         ".ruff_cache",
+        "Packages",  # O4: .NET NuGet 包缓存目录 (体积大, 无需索引)
     }
 )
 
@@ -568,7 +569,6 @@ async def index_repo_to_qdrant(
     ) as span:
         # 延迟导入, 避免 skills 模块加载时强依赖 rag.* (与现有 agent 文件一致)
         try:
-            from src.rag.embeddings import EmbeddingsClient
             from src.rag.qdrant_manager import QdrantManager
         except Exception as e:  # noqa: BLE001
             logger.warning("RAG 模块导入失败 (跳过索引): %s", e)
@@ -580,7 +580,6 @@ async def index_repo_to_qdrant(
             }
 
         try:
-            embeddings_client = EmbeddingsClient(settings)
             qdrant_mgr = QdrantManager(settings)
             await qdrant_mgr.ensure_collection()
         except Exception as e:  # noqa: BLE001
@@ -596,6 +595,9 @@ async def index_repo_to_qdrant(
         files = file_index.get("files", [])
         indexed_count = 0
         errors: list[str] = []
+        # 批量累积点, 每 100 个点批量写入一次 (减少 Qdrant upsert 往返)
+        batch_points: list[dict[str, Any]] = []
+        batch_size = 100
         for f in files:
             if not isinstance(f, dict):
                 continue
@@ -611,29 +613,40 @@ async def index_repo_to_qdrant(
                 chunk_content = chunk.get("content", "")
                 if not chunk_content:
                     continue
-                try:
-                    vectors = await embeddings_client.embed_texts(
-                        [chunk_content], user_id=user_id, session_id=namespace
-                    )
-                    if not vectors:
-                        continue
-                    await qdrant_mgr.upsert_points(
-                        namespace=namespace,
-                        texts=[chunk_content],
-                        vectors=vectors,
-                        metadata_list=[
-                            {
-                                "user_id": user_id,
-                                "repo_id": repo_id,
-                                "file_path": file_path,
-                                "language": f.get("ext", "").lstrip("."),
-                                "chunk_type": chunk.get("chunk_type", ""),
-                            }
-                        ],
-                    )
-                    indexed_count += 1
-                except Exception as e:  # noqa: BLE001
-                    errors.append(f"index_failed:{file_path}:{e}")
+                batch_points.append(
+                    {
+                        "content": chunk_content,
+                        "metadata": {
+                            "user_id": user_id,
+                            "repo_id": repo_id,
+                            "file_path": file_path,
+                            "language": f.get("ext", "").lstrip("."),
+                            "chunk_type": chunk.get("chunk_type", ""),
+                        },
+                    }
+                )
+                if len(batch_points) >= batch_size:
+                    try:
+                        await qdrant_mgr.upsert_points(
+                            namespace=namespace,
+                            points=batch_points,
+                            user_id=user_id,
+                        )
+                        indexed_count += len(batch_points)
+                    except Exception as e:  # noqa: BLE001
+                        errors.append(f"index_failed:{file_path}:{e}")
+                    batch_points.clear()
+        # 写入剩余点
+        if batch_points:
+            try:
+                await qdrant_mgr.upsert_points(
+                    namespace=namespace,
+                    points=batch_points,
+                    user_id=user_id,
+                )
+                indexed_count += len(batch_points)
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"index_failed:final_batch:{e}")
 
         span.update(
             output={

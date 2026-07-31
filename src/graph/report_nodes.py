@@ -88,7 +88,11 @@ async def c_code_learning_node(state: dict, settings: Any | None = None) -> dict
     logger.info(
         "c_code_learning 开始: report_type=%s, repo_id=%s, user_id=%s, "
         "session_id=%s, llm_session_id=%s",
-        report_type, repo_id, user_id, session_id, llm_session_id,
+        report_type,
+        repo_id,
+        user_id,
+        session_id,
+        llm_session_id,
     )
 
     cache_key = build_cache_key(
@@ -97,6 +101,7 @@ async def c_code_learning_node(state: dict, settings: Any | None = None) -> dict
         session_id=session_id,
         type_="code_learning",
         report_type=report_type,
+        repo_id=repo_id,
     )
 
     # 缓存命中检测 (同 session 同 repo 复用)
@@ -116,7 +121,11 @@ async def c_code_learning_node(state: dict, settings: Any | None = None) -> dict
             "c_code_learning 失败: missing_repo_config. report_type=%s, "
             "repo_id=%s, config_type=%s, repo_url=%r, config_keys=%s. "
             "请检查 coordinator_a_node 是否成功加载仓库配置.",
-            report_type, repo_id, config_type, repo_url_val, config_keys,
+            report_type,
+            repo_id,
+            config_type,
+            repo_url_val,
+            config_keys,
         )
         return {"errors": ["missing_repo_config"]}
 
@@ -143,9 +152,11 @@ async def c_code_learning_node(state: dict, settings: Any | None = None) -> dict
         )
     except Exception as e:
         logger.exception(
-            "c_code_learning learn_code 抛出异常: report_type=%s, repo_id=%s, "
-            "error=%s: %s",
-            report_type, repo_id, type(e).__name__, e,
+            "c_code_learning learn_code 抛出异常: report_type=%s, repo_id=%s, error=%s: %s",
+            report_type,
+            repo_id,
+            type(e).__name__,
+            e,
         )
         return {"errors": [f"code_learning_failed: {type(e).__name__}: {e}"]}
 
@@ -171,51 +182,262 @@ async def c_code_learning_node(state: dict, settings: Any | None = None) -> dict
     except Exception as e:
         logger.exception(
             "c_code_learning write_cache 失败: cache_key=%s, error=%s: %s",
-            cache_key, type(e).__name__, e,
+            cache_key,
+            type(e).__name__,
+            e,
         )
         return {"errors": [f"write_cache_failed: {type(e).__name__}: {e}"]}
+
+    # P0-3: 自动触发 Qdrant 索引 (若该仓库未索引, 报告流水线后续 d_content_fill 会无 RAG 数据)
+    # 失败不阻断主流程, 仅 warning; d_content_fill 降级从 file_index 直接检索
+    repo_path = learning_result.get("repo_path", "")
+    if repo_path:
+        try:
+            await _ensure_qdrant_indexed(
+                repo_path=repo_path,
+                repo_id=repo_id,
+                user_id=user_id,
+                agent_id=agent_id,
+                settings=settings,
+            )
+        except Exception as e:
+            logger.warning(
+                "c_code_learning 自动索引 Qdrant 失败 (不阻断, repo_id=%s): %s: %s",
+                repo_id,
+                type(e).__name__,
+                e,
+            )
 
     logger.info("c_code_learning 完成: cache_key=%s", cache_key)
     return {"code_learning_cache_key": cache_key}
 
 
-async def c_load_outline_node(state: dict, settings: Any | None = None) -> dict:
-    """任务二: 直接加载默认大纲 (纲要细化步骤已移除, 原始大纲够用).
+async def _ensure_qdrant_indexed(
+    repo_path: str,
+    repo_id: str,
+    user_id: str,
+    agent_id: str,
+    settings: Any | None,
+) -> None:
+    """P0-3: 检查 Qdrant 是否已索引该仓库, 未索引则自动触发.
 
-    职责:
-    1. 通过 config.docbot.outlines.load_outline(report_type) 加载默认大纲
-    2. 将章节列表写入 state.chapters
-    3. 初始化 current_chapter_idx=0 和 review_idx=0
+    失败仅 warning, 不阻断主流程 (d_content_fill 降级从 file_index 检索).
+    """
+    from src.rag.qdrant_manager import QdrantManager
+    from src.skills.docbot.repo_loader import index_repo_to_qdrant
 
-    说明: 用户要求去掉纲要细化步骤, 直接使用 outlines/*.yaml 配置的原始大纲.
-    原始大纲已足够详细 (含 idx/title/purpose/sections/key_points/example),
-    无需 LLM 二次细化.
+    try:
+        qdrant_mgr = QdrantManager(settings)
+        has_repo_data = await qdrant_mgr.has_repo_data(user_id, repo_id)
+    except Exception as e:
+        logger.warning(
+            "Qdrant has_repo_data 检查失败 (跳过自动索引, repo_id=%s): %s: %s",
+            repo_id,
+            type(e).__name__,
+            e,
+        )
+        return
+
+    if has_repo_data:
+        logger.info("Qdrant 已索引仓库 %s, 跳过自动索引", repo_id)
+        return
+
+    logger.info("Qdrant 未索引仓库 %s, 自动触发索引 (P0-3)", repo_id)
+    try:
+        result = await index_repo_to_qdrant(
+            repo_path=repo_path,
+            user_id=user_id,
+            repo_id=repo_id,
+            agent_id=agent_id,
+            settings=settings,
+        )
+        indexed_count = result.get("indexed_count", 0)
+        errors = result.get("errors", [])
+        logger.info(
+            "Qdrant 自动索引完成: repo_id=%s, indexed_count=%d, errors=%d",
+            repo_id,
+            indexed_count,
+            len(errors),
+        )
+        if errors:
+            logger.warning(
+                "Qdrant 自动索引部分失败 (不阻断): 前3个错误=%s",
+                errors[:3],
+            )
+    except Exception as e:
+        logger.warning(
+            "Qdrant 自动索引失败 (不阻断, repo_id=%s): %s: %s",
+            repo_id,
+            type(e).__name__,
+            e,
+        )
+
+
+async def c_outline_refine_node(state: dict, settings: Any | None = None) -> dict:
+    """任务二: STRATEGIC LLM 基于 code_learning + AGENTS.md/README.md 优化纲要.
+
+    职责 (P0-1 恢复纲要细化, 修复幻觉引用根源):
+    1. 读取 code_learning_cache (任务一产物, 含 summary/key_modules/dependencies/architecture_notes)
+    2. 加载默认大纲 outlines/{report_type}.yaml (作为参考基础)
+    3. 读取目标仓库 AGENTS.md (优先) + README.md (次选) 作为产品定位 ground truth
+    4. 调用 OutlineRefinerC.refine_outline() 由 STRATEGIC LLM 优化纲要
+       - 删除不适用章节 (无证据的 conditional 章必须 removed)
+       - 增加必要章节 (endpoints/key_modules 揭示但默认纲要缺失的模块)
+       - 替换硬编码通用示例为代码中的真实路径/实体/认证/错误码
+    5. 校验优化后纲要 (章节数 ≤ max_chapters, 保留引言和附录)
+    6. 写入 outline_cache + state.chapters
+    7. 初始化 current_chapter_idx=0 和 review_idx=0
 
     Args:
         state: ReportTaskState
         settings: Settings 实例
 
     Returns:
-        delta dict: {chapters, current_chapter_idx, review_idx}
+        delta dict: {chapters, current_chapter_idx, review_idx, outline_cache_key?}
     """
+    from src.agents.docbot.outline_refiner import OutlineRefinerC
     from src.config.docbot.outlines import load_outline
 
+    agent_id = state.get("agent_id", "agentinsight-docbot")
+    user_id = state.get("user_id", "")
+    session_id = state.get("session_id", "")
     report_type = state.get("report_type", "")
+    language = state.get("language", "zh")
+    llm_session_id = state.get("llm_session_id", "")
+    repo_id = state.get("repo_id", "")
 
-    chapters = load_outline(report_type)
+    logger.info("c_outline_refine 开始: report_type=%s", report_type)
+
+    # 1. 读取 code_learning_cache
+    code_learning: dict = {}
+    code_learning_cache_key = state.get("code_learning_cache_key", "")
+    if code_learning_cache_key:
+        raw = await read_cache(code_learning_cache_key, settings=settings)
+        if raw:
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    code_learning = parsed
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning("code_learning_cache JSON 解析失败: %s", e)
+
+    if not code_learning:
+        # 硬约束: 无代码学习结果时禁止原样输出默认 YAML
+        logger.error(
+            "c_outline_refine: code_learning 为空, 拒绝使用默认 YAML 原样输出 "
+            "(report_type=%s). 请先修复 code_learning 失败原因.",
+            report_type,
+        )
+        return {
+            "chapters": [],
+            "current_chapter_idx": 0,
+            "review_idx": 0,
+            "errors": ["code_learning_empty_outline_blocked"],
+        }
+
+    # 2. 读取目标仓库 AGENTS.md / README.md (作为 ground truth)
+    repo_path = code_learning.get("repo_path", "")
+    agents_md = _read_repo_doc(repo_path, "AGENTS.md")
+    readme_md = _read_repo_doc(repo_path, "README.md") if not agents_md else ""
+
+    # 3. 加载默认大纲 (作为参考基础, 传给 refine_outline)
+    default_outline = load_outline(report_type)
+
+    # 4. 调用 OutlineRefinerC 优化纲要
+    refiner = OutlineRefinerC(settings)
+    try:
+        refined = await refiner.refine_outline(
+            code_learning=code_learning,
+            report_type=report_type,
+            language=language,
+            llm_session_id=llm_session_id,
+            settings=settings,
+            default_outline=default_outline,
+            agents_md=agents_md,
+            readme_md=readme_md,
+        )
+    except Exception as e:
+        logger.exception(
+            "c_outline_refine 失败, 降级使用默认大纲 (report_type=%s): %s: %s",
+            report_type,
+            type(e).__name__,
+            e,
+        )
+        return {
+            "chapters": default_outline,
+            "current_chapter_idx": 0,
+            "review_idx": 0,
+        }
+
+    chapters = refined.get("chapters", [])
     if not chapters:
-        logger.warning("加载默认大纲失败 (report_type=%s), 使用空列表", report_type)
-        chapters = []
+        logger.warning(
+            "c_outline_refine: 优化后大纲为空, 降级使用默认大纲 (report_type=%s)",
+            report_type,
+        )
+        chapters = default_outline
+
+    # 5. 写入 outline_cache (供后续节点复用)
+    outline_cache_key = build_cache_key(
+        agent_id=agent_id,
+        user_id=user_id,
+        session_id=session_id,
+        type_="outline",
+        report_type=report_type,
+        repo_id=repo_id,
+    )
+    try:
+        await write_cache(
+            outline_cache_key,
+            json.dumps(refined, ensure_ascii=False),
+            settings=settings,
+        )
+    except Exception as e:
+        logger.warning("outline_cache 写入失败 (不阻断): %s: %s", type(e).__name__, e)
 
     logger.info(
-        "加载默认大纲: report_type=%s, chapters=%d", report_type, len(chapters)
+        "c_outline_refine 完成: report_type=%s, chapters=%d, refine_summary=%s",
+        report_type,
+        len(chapters),
+        refined.get("refine_summary", "")[:200],
     )
 
     return {
         "chapters": chapters,
         "current_chapter_idx": 0,
         "review_idx": 0,
+        "outline_cache_key": outline_cache_key,
     }
+
+
+def _read_repo_doc(repo_path: str, filename: str) -> str:
+    """读取目标仓库根目录的文档文件 (AGENTS.md / README.md), 失败返回空字符串.
+
+    P0-1: 作为产品定位 ground truth, 优先级 AGENTS.md > README.md.
+    截断到 20_000 字符防止 token 溢出.
+    """
+    if not repo_path:
+        return ""
+    import os
+
+    # 尝试多个候选路径 (根目录 / docs/ 子目录)
+    candidates = [
+        os.path.join(repo_path, filename),
+        os.path.join(repo_path, "docs", filename),
+        os.path.join(repo_path, filename.upper()),
+        os.path.join(repo_path, filename.lower()),
+    ]
+    for path in candidates:
+        try:
+            if os.path.isfile(path):
+                with open(path, encoding="utf-8", errors="ignore") as f:
+                    content = f.read()
+                    if content:
+                        return content[:20_000]
+        except OSError as e:
+            logger.debug("读取 %s 失败: %s", path, e)
+            continue
+    return ""
 
 
 async def d_content_fill_node(state: dict, settings: Any | None = None) -> dict:
@@ -268,10 +490,11 @@ async def d_content_fill_node(state: dict, settings: Any | None = None) -> dict:
             type_="content",
             report_type=report_type,
             chapter_idx=idx,
+            repo_id=repo_id,
         )
         placeholder_result = {
             "chapter_idx": idx,
-            "content_md": f"## 章节内容缺失\n\n本章节定义无效, 无法填充内容.",
+            "content_md": "## 章节内容缺失\n\n本章节定义无效, 无法填充内容.",
             "image_svgs": [],
         }
         await write_cache(
@@ -304,6 +527,8 @@ async def d_content_fill_node(state: dict, settings: Any | None = None) -> dict:
     if filler is None:
         filler = ContentFillerD(settings)
         _filler_cache[filler_cache_key] = filler
+    # P0-5: 传入 file_index 供生成期引用校验 (含 files[].path 集合)
+    file_index = code_learning.get("file_index") if isinstance(code_learning, dict) else None
     chapter_result = await filler.fill_chapter(
         chapter=chapter,
         code_learning=code_learning,
@@ -313,6 +538,7 @@ async def d_content_fill_node(state: dict, settings: Any | None = None) -> dict:
         user_id=user_id,
         llm_session_id=llm_session_id,
         settings=settings,
+        file_index=file_index,
     )
 
     # 写入 content_cache
@@ -323,6 +549,7 @@ async def d_content_fill_node(state: dict, settings: Any | None = None) -> dict:
         type_="content",
         report_type=report_type,
         chapter_idx=idx,
+        repo_id=repo_id,
     )
     await write_cache(
         content_cache_key,
@@ -365,6 +592,7 @@ async def e_review_node(state: dict, settings: Any | None = None) -> dict:
     report_type = state.get("report_type", "")
     language = state.get("language", "zh")
     llm_session_id = state.get("llm_session_id", "")
+    repo_id = state.get("repo_id", "")
 
     chapters = state.get("chapters", [])
     content_cache_keys = state.get("content_cache_keys", [])
@@ -423,6 +651,7 @@ async def e_review_node(state: dict, settings: Any | None = None) -> dict:
         type_="reviewed",
         report_type=report_type,
         chapter_idx=idx,
+        repo_id=repo_id,
     )
     await write_cache(
         reviewed_key,
@@ -462,6 +691,7 @@ async def f_merge_node(state: dict, settings: Any | None = None) -> dict:
     chapters = state.get("chapters", [])
     reviewed_cache_keys = state.get("reviewed_cache_keys", [])
     content_cache_keys = state.get("content_cache_keys", [])
+    repo_id = state.get("repo_id", "")
 
     # 先读取所有 reviewed_cache 到 dict (按数组位置 0-based 索引, 与 chapters 数组对齐)
     reviewed_map: dict[int, dict] = {}
@@ -505,18 +735,23 @@ async def f_merge_node(state: dict, settings: Any | None = None) -> dict:
             # 完全缺失, 写入占位
             missing_count += 1
             logger.error("章节 %d 内容完全缺失!", i)
-            reviewed_data.append({
-                "chapter_idx": ch.get("idx", i + 1),
-                "content_md": f"## {ch.get('title', f'章节{i+1}')}\n\n本章节内容生成失败, 请重新生成.",
-                "image_svgs": [],
-            })
+            reviewed_data.append(
+                {
+                    "chapter_idx": ch.get("idx", i + 1),
+                    "content_md": f"## {ch.get('title', f'章节{i + 1}')}\n\n本章节内容生成失败, 请重新生成.",
+                    "image_svgs": [],
+                }
+            )
 
     if missing_count > 0:
         logger.error("合并阶段发现 %d 个章节内容完全缺失", missing_count)
 
     logger.info(
         "合并阶段: chapters=%d, reviewed=%d, content_fallback=%d, missing=%d",
-        len(chapters), len(reviewed_map), len(reviewed_data) - len(reviewed_map) - missing_count, missing_count,
+        len(chapters),
+        len(reviewed_map),
+        len(reviewed_data) - len(reviewed_map) - missing_count,
+        missing_count,
     )
 
     # 调用 MergerF 合并
@@ -536,6 +771,7 @@ async def f_merge_node(state: dict, settings: Any | None = None) -> dict:
         session_id=session_id,
         type_="merged",
         report_type=report_type,
+        repo_id=repo_id,
     )
     await write_cache(
         merged_key,
@@ -569,6 +805,7 @@ async def g_final_in_subgraph_node(state: dict, settings: Any | None = None) -> 
     llm_session_id = state.get("llm_session_id", "")
     merged_cache_key = state.get("merged_cache_key", "")
     code_learning_cache_key = state.get("code_learning_cache_key", "")
+    repo_id = state.get("repo_id", "")
 
     # 读取 merged_cache
     merged: dict = {}
@@ -613,6 +850,7 @@ async def g_final_in_subgraph_node(state: dict, settings: Any | None = None) -> 
         session_id=session_id,
         type_="final",
         report_type=report_type,
+        repo_id=repo_id,
     )
     await write_cache(
         final_key,
@@ -635,7 +873,7 @@ async def g_final_in_subgraph_node(state: dict, settings: Any | None = None) -> 
 __all__ = [
     "b_init_session_node",
     "c_code_learning_node",
-    "c_load_outline_node",
+    "c_outline_refine_node",
     "d_content_fill_node",
     "e_review_node",
     "f_merge_node",

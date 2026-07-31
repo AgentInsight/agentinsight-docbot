@@ -248,7 +248,7 @@ class JWTAuthMiddleware:
                 options={"verify_exp": True, "require": ["exp", "iat"]},
                 leeway=self.settings.jwt_clock_skew,
             )
-            # AgentInsightService JWT Claims: UserId (字符串)
+            # JWT Claims: UserId (字符串)
             user_id = str(payload.get("UserId") or payload.get("user_id") or "")
             return user_id or None
         except Exception as e:  # noqa: BLE001

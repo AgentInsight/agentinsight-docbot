@@ -71,14 +71,15 @@ chapters:
     purpose: 以可量化、可验证的方式定义非功能需求
     sections: []
     key_points:
-      - 性能（P99 延迟、QPS、并发数）
-      - 可用性（可用率、RTO、RPO）
-      - 安全（OAuth2/RBAC/TLS 1.3/审计）
-      - 可扩展性（水平扩展、数据规模）
-      - 可维护性（部署时间、MTTR、可观测）
-      - 可访问性 WCAG 2.1 AA
-      - 兼容性（浏览器/设备/系统/网络）
-      - 本地化与国际化
+      # v8-P0-D: 去硬编码, NFR 编号体系与具体指标必须从代码配置/AGENTS.md 提取
+      - 性能 NFR-P-XXX（指标值从代码配置/AGENTS.md 提取, 如 P99/QPS/并发数, 不预设具体数值）
+      - 可用性 NFR-A-XXX（可用率/RTO/RPO, 数值从代码配置提取）
+      - 安全 NFR-S-XXX（认证/授权方式从代码提取, 不预设 OAuth2/RBAC/TLS 1.3）
+      - 可扩展性 NFR-SC-XXX（水平扩展/数据规模, 从代码架构推导）
+      - 可维护性 NFR-M-XXX（部署时间/MTTR/可观测性, 从代码配置提取）
+      - 可访问性 NFR-AC-XXX（WCAG 2.1 AA, 若代码无前端则标注"不适用"）
+      - 兼容性 NFR-C-XXX（浏览器/设备/系统/网络, 从代码配置提取）
+      - 本地化 NFR-L-XXX（本地化与国际化, 从代码 i18n 配置提取）
 
   - idx: 5
     title: 接口需求
@@ -106,8 +107,7 @@ chapters:
       ## 数据模型 (ER 概念)
       | 实体 | 字段 | 类型 | 关系 |
       |------|------|------|------|
-      | User | id | PK | 1:N → Order |
-      | Order | id | PK | N:1 → User |
+      | <从代码 Entity 提取> | <从代码字段提取> | PK/FK | <从代码关系提取> |
       说明: 系统会根据本章节标题自动生成 SVG ER 图并内嵌, 正文不要输出 PlantUML/Mermaid 代码。
 
   - idx: 7

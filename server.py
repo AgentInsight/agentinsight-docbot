@@ -209,6 +209,38 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     _create_background_task(_warmup_graph())
 
+    # 6. v6-P0-A: 容器启动时清理 RAG 检索结果缓存, 避免跨容器持久化污染
+    # Redis 缓存跨容器持久化会导致过时空结果长期遮蔽新索引数据
+    async def _invalidate_rag_cache_on_startup() -> None:
+        try:
+            from src.common.redis_client import get_redis_client
+
+            redis = await get_redis_client(settings)
+            if redis is None:
+                return
+            # 使用 SCAN 避免阻塞 Redis (禁用 KEYS)
+            # 缓存键格式: {agent_id}:{user_id}:rag:* (见 _cache_key 方法)
+            cursor = b"0"
+            total_deleted = 0
+            while True:
+                cursor, keys = await redis.scan(
+                    cursor=cursor,
+                    match=f"{settings.agent_id}:*:rag:*",
+                    count=200,
+                )
+                if keys:
+                    await redis.delete(*keys)
+                    total_deleted += len(keys)
+                # cursor 类型可能是 bytes 或 int
+                if cursor == b"0" or cursor == 0:
+                    break
+            if total_deleted > 0:
+                logger.info("v6-P0-A: 容器启动清理 RAG 缓存 %d 条", total_deleted)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("v6-P0-A: 清理 RAG 缓存失败 (不阻断启动): %s", e)
+
+    _create_background_task(_invalidate_rag_cache_on_startup())
+
     yield
 
     # ===== 关闭阶段 (按启动逆序释放) =====

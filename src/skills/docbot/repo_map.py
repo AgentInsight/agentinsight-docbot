@@ -38,6 +38,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 # 支持的语言映射: 文件扩展名 -> tree-sitter 语言名
+# O4-P0-A: 新增 C# / VB.NET 支持 (.NET 仓库)
 _EXT_TO_LANG: dict[str, str] = {
     ".py": "python",
     ".js": "javascript",
@@ -53,6 +54,8 @@ _EXT_TO_LANG: dict[str, str] = {
     ".cc": "cpp",
     ".cxx": "cpp",
     ".hpp": "cpp",
+    ".cs": "csharp",       # O4-P0-A 新增: C# 支持
+    ".vb": "vbnet",        # O4-P0-A 新增: VB.NET 支持 (兼容旧项目)
 }
 
 # 符号节点类型 (按语言分组)
@@ -111,6 +114,29 @@ _SYMBOL_NODE_TYPES: dict[str, set[str]] = {
         "struct_specifier",
         "enum_specifier",
         "union_specifier",
+    },
+    # O4-P0-A 新增: C# 符号节点类型 (tree-sitter-c-sharp)
+    "csharp": {
+        "class_declaration",
+        "interface_declaration",
+        "struct_declaration",
+        "enum_declaration",
+        "method_declaration",
+        "constructor_declaration",
+        "property_declaration",
+        "field_declaration",
+        "namespace_declaration",
+    },
+    # O4-P0-A 新增: VB.NET 符号节点类型 (tree-sitter-vb)
+    "vbnet": {
+        "function_statement",
+        "sub_statement",
+        "class_statement",
+        "module_statement",
+        "interface_statement",
+        "structure_statement",
+        "enum_statement",
+        "property_statement",
     },
 }
 
@@ -259,13 +285,18 @@ def generate_repo_map(
     file_index: dict,
     *,
     max_chars: int = _DEFAULT_MAX_CHARS,
+    code_graph: Any = None,  # v6-P0-C: 新增, 按 PageRank 排序
 ) -> str:
     """生成 tree-sitter 符号级仓库地图 (P1-5.2.1).
+
+    v6-P0-C: 若提供 code_graph, 按 PageRank 排序文件 (核心模块优先),
+    否则按字母序 (兼容旧行为).
 
     Args:
         repo_path: 仓库本地路径 (未使用, 保留参数为将来直接读文件场景)
         file_index: build_file_index 返回的文件索引 dict (含 files 列表)
         max_chars: 仓库地图最大字符数 (超过截断)
+        code_graph: v6-P0-C CodeGraph 对象, 用于 PageRank 排序
 
     Returns:
         紧凑的仓库地图文本, 格式:
@@ -293,8 +324,36 @@ def generate_repo_map(
         if ext in _EXT_TO_LANG:
             code_files.append(f)
 
-    # 按路径字母序排序 (稳定)
-    code_files.sort(key=lambda x: x.get("path", ""))
+    # v6-P0-C: 按 PageRank 排序文件 (核心模块优先)
+    if code_graph is not None:
+        try:
+            from src.skills.docbot.code_graph import pagerank_symbols
+
+            ranks = pagerank_symbols(code_graph)
+            # 计算每个文件的 PageRank 总分 (文件内所有符号的 PageRank 之和)
+            file_scores: dict[str, float] = {}
+            for qualified_name, score in ranks.items():
+                # qualified_name = "file_path:name"
+                if ":" in qualified_name:
+                    file_path = qualified_name.rsplit(":", 1)[0]
+                    file_scores[file_path] = file_scores.get(file_path, 0.0) + score
+            # 按 PageRank 降序排序, 无分的文件排后面按字母序
+            code_files.sort(
+                key=lambda x: (
+                    -file_scores.get(x.get("path", ""), 0.0),
+                    x.get("path", ""),
+                ),
+            )
+            logger.info(
+                "v6-P0-C: repo_map 按 PageRank 排序 (%d 个文件有分数)",
+                len(file_scores),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("v6-P0-C: PageRank 排序失败, 降级字母序: %s", e)
+            code_files.sort(key=lambda x: x.get("path", ""))
+    else:
+        # 兼容旧行为: 按路径字母序
+        code_files.sort(key=lambda x: x.get("path", ""))
 
     if not code_files:
         return ""

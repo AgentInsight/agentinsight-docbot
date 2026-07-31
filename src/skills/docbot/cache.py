@@ -38,10 +38,15 @@ def build_cache_key(
     type_: str,
     report_type: str,
     chapter_idx: int | str | None = None,
+    repo_id: str | None = None,
 ) -> str:
     """构造缓存键.
 
-    键格式: docbot:{agent_id}:{user_id}:{session_id}:{type}:{report_type}[:{chapter_idx}]
+    键格式 (v12):
+      docbot:{agent_id}:{user_id}:{session_id}[:{repo_id}]:{type}:{report_type}[:{chapter_idx}]
+
+    v12-P0-9: 加入可选 repo_id, 避免同 session 切换仓库时命中错误仓库的 code_learning 缓存
+    (用户可配置任意仓库, 禁止跨仓库污染).
 
     Args:
         agent_id: Agent 标识 (固定 'agentinsight-docbot')
@@ -50,13 +55,17 @@ def build_cache_key(
         type_: 缓存类型, 取值见 CACHE_TYPES
         report_type: 报告类型 (architecture/design/.../api_doc 共 8 种)
         chapter_idx: 章节索引 (仅 content/reviewed 类型需要, 0-based)
+        repo_id: 仓库 ID (推荐传入, 隔离多仓库缓存)
 
     Returns:
         缓存键字符串
     """
     if type_ not in CACHE_TYPES:
         raise ValueError(f"invalid_cache_type: {type_}, allowed: {sorted(CACHE_TYPES)}")
-    parts = [_KEY_PREFIX, agent_id, user_id, session_id, type_, report_type]
+    parts = [_KEY_PREFIX, agent_id, user_id, session_id]
+    if repo_id:
+        parts.append(str(repo_id))
+    parts.extend([type_, report_type])
     if chapter_idx is not None:
         parts.append(str(chapter_idx))
     return ":".join(parts)

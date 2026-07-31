@@ -54,7 +54,7 @@ class HybridRetriever:
     失效缓存. 详见 _ensure_bm25_corpus / invalidate_bm25_cache 文档.
     """
 
-    RETRIEVER_CACHE_TTL: int = 3600  # 检索结果缓存 TTL (秒, 1 小时, 可配置)
+    RETRIEVER_CACHE_TTL: int = 300  # v6-P0-A: 5 分钟 (原 3600), 加快新索引可见性
     # BM25 断点修复: BM25 语料 Redis 缓存 TTL (秒, 24 小时兜底过期)
     # 主路径靠 invalidate_bm25_cache 主动失效 (版本号 +1), TTL 仅兜底防止长期僵尸缓存
     _BM25_CORPUS_CACHE_TTL: int = 86400
@@ -529,7 +529,13 @@ class HybridRetriever:
 
         写入后检查总数, 超过 max_size 时淘汰最久未访问.
         Redis 不可用时静默跳过.
+
+        v6-P0-A: 空结果不缓存, 避免新索引被旧空缓存遮蔽.
         """
+        # v6-P0-A: 空结果不缓存, 避免新索引被旧空缓存遮蔽
+        if not results:
+            logger.debug("v6-P0-A: RAG 检索结果为空, 不写入缓存 (避免遮蔽新索引)")
+            return
         if not self._redis_initialized:
             await self._ensure_redis()
         if self._redis is None:

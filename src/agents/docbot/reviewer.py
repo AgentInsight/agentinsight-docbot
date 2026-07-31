@@ -135,6 +135,8 @@ class ReviewerE:
                     session_id=llm_session_id,
                     span_name=f"docbot.review.{report_type}.{chapter_idx}",
                     step="review",
+                    max_tokens=8192,
+                    reasoning_effort="none",
                 )
             except Exception as llm_err:  # noqa: BLE001
                 logger.warning(

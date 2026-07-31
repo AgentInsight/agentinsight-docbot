@@ -338,6 +338,14 @@ class LLMClient:
             # reasoning_effort 透传 LiteLLM
             # 不支持 reasoning_effort 的模型由 LiteLLM 静默忽略
             kwargs["reasoning_effort"] = reasoning_effort
+            # deepseek-v4: reasoning_effort=none 必须配合 thinking.disabled,
+            # 否则仍默认开启 thinking, 耗尽 max_tokens 且 content 为空
+            if str(reasoning_effort).lower() == "none":
+                kwargs["thinking"] = {"type": "disabled"}
+                # 兼容部分 LiteLLM 版本仅透传 extra_body
+                extra = dict(kwargs.get("extra_body") or {})
+                extra["thinking"] = {"type": "disabled"}
+                kwargs["extra_body"] = extra
         if api_key:
             kwargs["api_key"] = api_key
 
@@ -353,7 +361,30 @@ class LLMClient:
         output_tokens = getattr(usage, "completion_tokens", 0) if usage else 0
         breakdown = self._compute_cost(original_model, input_tokens, output_tokens)
         cost_usd = breakdown["total_cost"]
-        content = response.choices[0].message.content or ""
+        message = response.choices[0].message
+        content = message.content or ""
+        # 推理模型 (如 deepseek-v4) 可能把正文放在 reasoning_content,
+        # 或 thinking 耗尽 max_tokens 导致 content 为空 — 尝试回退提取
+        if not str(content).strip():
+            reasoning = getattr(message, "reasoning_content", None) or getattr(
+                message, "reasoning", None
+            )
+            if isinstance(reasoning, str) and reasoning.strip():
+                content = reasoning
+                logger.warning(
+                    "LLM content 为空, 回退使用 reasoning_content "
+                    "(model=%s, output_tokens=%d, reasoning_len=%d)",
+                    original_model,
+                    output_tokens,
+                    len(content),
+                )
+            elif output_tokens > 0:
+                logger.warning(
+                    "LLM content 为空但 output_tokens=%d (model=%s); "
+                    "可能是推理耗尽 max_tokens, 建议增大 max_tokens",
+                    output_tokens,
+                    original_model,
+                )
 
         return LLMResponse(
             content=content,
@@ -612,9 +643,8 @@ class LLMClient:
                             "TokenBudgetAllocator 回写失败 (非阻断): %s",
                             budget_err,
                         )
-                    # 写入 LLM 响应缓存 (仅成功响应)
-                    # 用户约束: "出错了不要存缓存" — 此处仅在成功路径, 异常路径不会到达
-                    if cache_key is not None:
+                    # 写入 LLM 响应缓存 (仅成功且非空响应)
+                    if cache_key is not None and (response.content or "").strip():
                         await self._set_llm_cache(cache_key, response)
                     return response
                 except Exception as e:  # noqa: BLE001
@@ -727,6 +757,11 @@ class LLMClient:
                 if reasoning_effort:
                     # reasoning_effort 透传 LiteLLM (功能 10)
                     kwargs["reasoning_effort"] = reasoning_effort
+                    if str(reasoning_effort).lower() == "none":
+                        kwargs["thinking"] = {"type": "disabled"}
+                        extra = dict(kwargs.get("extra_body") or {})
+                        extra["thinking"] = {"type": "disabled"}
+                        kwargs["extra_body"] = extra
                 if api_key:
                     kwargs["api_key"] = api_key
                 try:

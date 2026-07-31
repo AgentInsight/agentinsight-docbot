@@ -131,12 +131,13 @@ class TestValidateCitations:
         assert result["missing_files"] == []
 
     def test_missing_file_detected(self) -> None:
-        """引用的文件路径不在 file_index 中时, 应触发 warning."""
+        """引用的文件路径不在 file_index 中时, 应触发 error (P0-5: 阻断幻觉引用)."""
         citations = [
             {"file_path": "src/nonexistent.py", "line_start": 1, "line_end": 10},
         ]
         result = validate_citations(citations, file_index=_SAMPLE_FILE_INDEX)
-        assert result["passed"] is True  # warning 不影响 passed
+        # P0-5: severity 从 warning 改为 error, missing file 现在影响 passed (阻断幻觉引用)
+        assert result["passed"] is False  # error 影响 passed
         assert result["invalid_count"] == 1
         assert "src/nonexistent.py" in result["missing_files"]
 

@@ -174,10 +174,11 @@ def validate_citations(
         is_valid = True
 
         # 1. 文件路径存在性 (file_index 提供时校验)
+        # P0-5: severity 从 "warning" 改为 "error", 使 passed 判定能识别幻觉引用
         if known_paths and path and path not in known_paths:
             issues.append(
                 {
-                    "severity": "warning",
+                    "severity": "error",
                     "category": "citation_file_not_found",
                     "message": f"引用的文件路径不存在: '{path}'",
                     "file_path": path,
