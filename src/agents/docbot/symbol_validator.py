@@ -44,9 +44,9 @@ _COMMON_WORDS: frozenset[str] = frozenset({
     "UTC", "ISO", "UTF", "CRUD", "AC", "FR", "NFR",
 })
 
-# v5-P0-D: 文档编号模式 (如 AC1/FR-001/NFR-002/API-003/DEP-001 等), 不应校验为代码符号
+# v5-P0-D: 文档编号模式 (如 AC1/FR-001/NFR-002/API-003/DEP-001/DEF-001 等), 不应校验为代码符号
 _DOC_ID_PATTERN = re.compile(
-    r"^(?:AC|FR|NFR|IR|DR|BR|C|AS|DEP|API|UC|TC|SC|REQ)[-_]?\d+$",
+    r"^(?:AC|FR|NFR|IR|DR|BR|C|AS|DEP|API|UC|TC|SC|REQ|DEF|BUG|CWE|CVE)[-_]?\d+$",
     re.IGNORECASE,
 )
 
@@ -62,6 +62,8 @@ _COMMON_ABBREVS: frozenset[str] = frozenset({
     # 常见技术栈词 (非项目符号, 避免误触发幻觉重写)
     "ASP", "NET", "PostgreSQL", "SqlSugar", "Redis", "SSE", "SaaS", "DevOps",
     "AGENTS", "ADMIN", "OWNER", "MEMBER",
+    # 缺陷报告编号前缀与安全/并发术语 (单独出现时也不应被剥除)
+    "DEF", "BUG", "CWE", "CVE", "TOCTOU", "OOM", "POSIX", "RCA",
 })
 
 # v7-P0-B: 常见外部库/框架类名 (不应校验为项目符号)
@@ -98,6 +100,11 @@ _EXTERNAL_LIB_SYMBOLS: frozenset[str] = frozenset({
     "AutoMapper", "Mapster", "DTOMapper",
     "Polly", "RetryPolicy", "CircuitBreakerPolicy",
     "Serilog", "NLog", "Log4net",
+    # .NET BCL / 并发与资源类型 (缺陷报告高频引用)
+    "ConcurrentDictionary", "SemaphoreSlim", "IDisposable", "IAsyncDisposable",
+    "XmlWriter", "XmlReader", "CancellationToken", "CancellationTokenSource",
+    "DisposeAsync", "ValueTask", "TaskCompletionSource", "Interlocked",
+    "ReaderWriterLockSlim", "ManualResetEventSlim", "ChannelWriter", "ChannelReader",
     # 支付/认证相关 (业界通用协议/SDK, 非项目自身符号)
     "JSAPI", "NativePay", "MiniProgram", "AlipayClient", "AlipayTrade",
     "WeChatPayClient", "WeChatPayRequest", "WeChatPayResponse",
@@ -126,6 +133,9 @@ def _is_doc_id_or_abbrev(ident: str) -> bool:
         True 表示是文档编号/缩写/外部库, 应跳过校验
     """
     if _DOC_ID_PATTERN.match(ident):
+        return True
+    # 纯编号前缀 (DEF/BUG/CWE/CVE), 即使未带数字也不应被剥除
+    if ident.upper() in {"DEF", "BUG", "CWE", "CVE"}:
         return True
     if ident in _COMMON_ABBREVS or ident.upper() in _COMMON_ABBREVS:
         return True

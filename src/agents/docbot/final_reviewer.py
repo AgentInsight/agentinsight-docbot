@@ -551,8 +551,62 @@ class FinalReviewerG:
             return FinalReviewerG._check_prd_quality(content_md)
         if report_type == "api_doc":
             return FinalReviewerG._check_api_doc_quality(content_md)
+        if report_type == "defect":
+            return FinalReviewerG._check_defect_quality(content_md)
         # 其他 report_type 不检查, 直接通过
         return {"passed": True, "metrics": {}, "suggestions": []}
+
+    @staticmethod
+    def _check_defect_quality(doc_text: str) -> dict:
+        """缺陷文档质量检查: 以代码级 DEF 清单为主, 而非流程规范."""
+        import re
+
+        def_set = set(re.findall(r"\bDEF[-_]?\d+\b", doc_text, re.IGNORECASE))
+        path_hits = re.findall(
+            r"`?[A-Za-z0-9_./\\-]+\.(?:py|ts|tsx|js|jsx|go|java|cs|rb|php|rs)(?::L?\d+)?`?",
+            doc_text,
+        )
+        process_markers = [
+            "缺陷生命周期",
+            "负责人矩阵",
+            "状态机",
+            "New→Closed",
+            "New->Closed",
+            "SLA",
+            "MTTR",
+            "Jira 工作流",
+        ]
+        process_hits = [m for m in process_markers if m in doc_text]
+        list_markers = ["严重度", "修复建议", "evidence", "confidence", "Critical", "High"]
+        list_hits = sum(1 for m in list_markers if m in doc_text)
+
+        metrics = {
+            "def_count": len(def_set),
+            "path_ref_count": len(path_hits),
+            "process_marker_count": len(process_hits),
+            "list_marker_hits": list_hits,
+        }
+        suggestions: list[str] = []
+        if metrics["def_count"] < 3:
+            suggestions.append(
+                f"DEF 条目过少 ({metrics['def_count']}), 建议基于代码证据补充缺陷清单"
+            )
+        if metrics["path_ref_count"] < 3:
+            suggestions.append(
+                f"代码路径引用过少 ({metrics['path_ref_count']}), 缺陷应落到具体文件/行号"
+            )
+        if metrics["process_marker_count"] >= 3 and metrics["def_count"] < 5:
+            suggestions.append(
+                "文档疑似偏向缺陷管理流程规范, 应改写为代码级缺陷清单"
+            )
+        if list_hits < 2:
+            suggestions.append("缺少严重度/修复建议等清单要素, 请按 DEF 条目模板补全")
+
+        return {
+            "passed": len(suggestions) == 0,
+            "metrics": metrics,
+            "suggestions": suggestions,
+        }
 
     @staticmethod
     def _check_prd_quality(doc_text: str) -> dict:

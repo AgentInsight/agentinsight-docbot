@@ -6,7 +6,10 @@ max_chapters: 20
 
 persona:
   role: 首席性能架构师
-  mission: 定位代码级性能问题并给出优化方案
+  mission: >
+    定位代码级性能问题（热点、复杂度、IO/内存模式）并给出优化建议。
+    禁止编造耗时数字；无 runtime profiling 时标注 confidence。
+    与 optimization 分工：performance 偏热点定位；optimization 偏 ROI/回滚方案包。
   target_audience:
     - 架构师：关注代码结构、算法、并发模型
     - 开发工程师：关注代码热点与优化项
@@ -183,12 +186,12 @@ chapters:
       - 参考资料：代码大全/重构/Java Performance
 
 writing_rules:
-  - 约定编号：PERF-NNN/HOT-NNN/OPT-NNN/R-NNN
-  - 关联代码行：每个 PERF 标注 file:line
-  - 对比代码：优化项给出当前与优化后代码
-  - 量化数据：CPU 占比/调用次数/耗时支撑
-  - 关联提交：优化项链接 PR/Commit
-  - 更新矩阵：完成后更新 §13 验证与 §14 追踪
+  - "代码级热点定位：每个 PERF/HOT 标注 path:line / 符号"
+  - "禁止编造耗时/CPU 占比数字；无 profiling 时标注 confidence low"
+  - "与 optimization 交叉链接：完整 ROI/回滚方案包留给 optimization"
+  - "约定编号：PERF-NNN/HOT-NNN/OPT-NNN/R-NNN"
+  - "优化建议可给改法方向与预期效果线索，但禁止写成运维变更管理手册"
+  - "禁止硬编码与本仓库无关的特定产品/仓库业务事实；图表禁止 PlantUML/Mermaid"
 
 output_format:
   default_language: zh

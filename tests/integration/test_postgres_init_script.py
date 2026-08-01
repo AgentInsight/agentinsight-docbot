@@ -4,7 +4,7 @@
 - init.sql 在 postgres 容器启动时已执行 (业务表存在)
 - 表结构正确 (关键列存在)
 - 触发器存在 (update_updated_at_column 触发器函数 + 各表触发器)
-- 默认限额行存在 (report_limits 全局默认 daily_limit=5)
+- 默认限额行存在 (report_limits 全局默认 daily_limit=5; docbot Agent 级默认 daily_limit=3)
 
 需要部署后容器栈 (Postgres).
 不直接连数据库, 用 docker exec 探测.
@@ -148,6 +148,17 @@ class TestPostgresInitScript:
         rows = [line.strip() for line in result.stdout.splitlines() if line.strip()]
         assert rows, "report_limits 无全局默认限额行"
         assert rows[0] == "5", f"全局默认限额 daily_limit 应为 5, 实际为 {rows[0]}"
+
+    def test_docbot_agent_default_limit_row_exists(self) -> None:
+        """验证 report_limits 存在 docbot Agent 级默认行 (daily_limit=3)."""
+        result = _psql_query(
+            "SELECT daily_limit FROM report_limits "
+            "WHERE agent_id = 'agentinsight-docbot' AND user_id IS NULL;"
+        )
+        _skip_if_unavailable(result)
+        rows = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        assert rows, "report_limits 无 docbot Agent 级默认限额行"
+        assert rows[0] == "3", f"docbot Agent 默认限额应为 3, 实际为 {rows[0]}"
 
     def test_extensions_installed(self) -> None:
         """验证 uuid-ossp 和 pgcrypto 扩展已安装."""

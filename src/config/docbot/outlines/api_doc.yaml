@@ -6,7 +6,9 @@ max_chapters: 20
 
 persona:
   role: API 设计工程师
-  mission: 生成结构完整、可驱动 SDK 与客户端集成的 API 文档
+  mission: >
+    生成集成向完整契约文档（方法/路径/参数/错误码/示例），可驱动 SDK 与客户端集成。
+    禁止重复撰写总体模块构架长文（留给 architecture/design）；与 design「接口设计要点」互链。
   target_audience:
     - 前端/移动端开发者：关注接口详情与 SDK
     - 第三方开发者：关注认证授权与 Webhook
@@ -195,12 +197,12 @@ chapters:
       - 联系与支持（邮箱、工单、社区、状态页）
 
 writing_rules:
-  - 遵循编号约定：API-NNN/ERR-NNNN/RATE-NNN
-  - 按 §7.1 模板编写接口，便于自动化解析
-  - 维护 OpenAPI 规范文件，自动生成详情
-  - 分段错误码按模块，编号不重复
-  - 为每接口提供 cURL 与一种 SDK 示例
-  - 遵循 §4.1 字段命名规范
+  - 集成向完整契约：每个端点含方法/路径/参数/错误码/示例
+  - 禁止重复写总体模块构架/分层蓝图长文（留给 architecture/design）
+  - 与 design「接口设计要点」互链：design 写边界，本文写完整契约
+  - 遵循编号约定：API-NNN/ERR-NNNN/RATE-NNN；接口清单与 endpoints_text 对齐
+  - 按统一模板编写接口，便于自动化解析；为每接口提供 cURL 或一种 SDK 示例
+  - 禁止硬编码与本仓库无关的特定产品/仓库业务事实；无证据标注 insufficient_evidence
 
 output_format:
   default_language: zh

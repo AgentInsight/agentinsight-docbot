@@ -1310,10 +1310,21 @@ class ContentFillerD:
         if not content or not symbols:
             return content
 
+        # 文档编号前缀 / 缺陷报告保留词: 禁止剥除 (否则 DEF-001 会变成 -001)
+        _preserve = {
+            "DEF", "BUG", "CWE", "CVE", "TOCTOU", "OOM", "POSIX", "RCA",
+            "Critical", "High", "Medium", "Low",
+        }
+
         result = content
         for sym in symbols[:80]:
             s = str(sym or "").strip()
             if not s or len(s) < 2:
+                continue
+            if s in _preserve or s.upper() in _preserve:
+                continue
+            # DEF-001 / BUG-002 等完整编号
+            if re.fullmatch(r"(?:DEF|BUG|CWE|CVE)[-_]?\d+", s, re.IGNORECASE):
                 continue
             # 反引号包裹 → 空; 裸标识符仅整词替换, 避免半截破坏
             result = re.sub(rf"`{re.escape(s)}`", "``", result)
@@ -1404,6 +1415,24 @@ class ContentFillerD:
         else:
             enums_text = enums_text[:1500] if is_api_ish else ""
 
+        # defect: 将任务一 defect_risks 注入摘要, 供清单章落地 DEF 条目
+        if report_type == "defect":
+            risks = cl.get("defect_risks")
+            if not risks and isinstance(cl.get("type_specific"), dict):
+                risks = cl["type_specific"].get("defect_risks")
+            risk_block = self._format_defect_risks_for_prompt(risks)
+            if risk_block:
+                code_summary = (code_summary + "\n\n" + risk_block)[:6000]
+
+        # design: 注入模块设计要点与技术决策, 约束概要粒度
+        if report_type == "design":
+            type_specific = cl.get("type_specific") if isinstance(cl.get("type_specific"), dict) else {}
+            points = cl.get("module_design_points") or type_specific.get("module_design_points")
+            decisions = cl.get("design_decisions") or type_specific.get("design_decisions")
+            design_block = self._format_design_focus_for_prompt(points, decisions)
+            if design_block:
+                code_summary = (code_summary + "\n\n" + design_block)[:6000]
+
         return {
             "code_summary": code_summary,
             "key_modules_text": key_modules_text,
@@ -1414,6 +1443,58 @@ class ContentFillerD:
             "project_metadata_text": self._safe_get_str(cl, "project_metadata_text")[:1200],
             "glossary_text": glossary_text,
         }
+
+    @staticmethod
+    def _format_design_focus_for_prompt(points: object, decisions: object) -> str:
+        """将 design 类型专属字段格式化为概要设计填章约束块."""
+        lines: list[str] = [
+            "# 概要设计约束 (HLD): 止于模块/接口/数据/运行要点, 禁止伪代码与字段级详细设计"
+        ]
+        if isinstance(points, list) and points:
+            lines.append("## 模块设计要点候选 (module_design_points)")
+            for i, item in enumerate(points[:30], 1):
+                if not isinstance(item, dict):
+                    continue
+                lines.append(
+                    f"{i}. 模块={item.get('module', '')}; 职责={item.get('responsibility', '')}; "
+                    f"要点={item.get('design_points', '')}; 证据={item.get('evidence', '')}"
+                )
+        if isinstance(decisions, list) and decisions:
+            lines.append("## 关键技术决策候选 (design_decisions)")
+            for i, item in enumerate(decisions[:20], 1):
+                if not isinstance(item, dict):
+                    continue
+                lines.append(
+                    f"{i}. 决策={item.get('decision', '')}; 理由={item.get('rationale', '')}; "
+                    f"备选={item.get('alternatives', '')}; 证据={item.get('evidence', '')}"
+                )
+        return "\n".join(lines) if len(lines) > 1 else "\n".join(lines)
+
+    @staticmethod
+    def _format_defect_risks_for_prompt(risks: object) -> str:
+        """将 defect_risks 列表格式化为填章可用的候选缺陷块."""
+        if not isinstance(risks, list) or not risks:
+            return ""
+        lines = [
+            "# 任务一缺陷风险候选 (defect_risks, 填章必须优先落地为 DEF 条目, 禁止改写成流程规范)"
+        ]
+        for i, item in enumerate(risks[:40], 1):
+            if not isinstance(item, dict):
+                continue
+            def_id = str(item.get("id") or f"DEF-{i:03d}")
+            title = str(item.get("title") or item.get("description") or "")[:120]
+            sev = str(item.get("severity") or "medium")
+            cat = str(item.get("category") or "other")
+            evidence = str(item.get("evidence") or "")
+            symbol = str(item.get("symbol") or "")
+            impact = str(item.get("impact") or "")
+            fix = str(item.get("fix_hint") or "")
+            conf = str(item.get("confidence") or "low")
+            lines.append(
+                f"- {def_id} [{sev}/{cat}] {title} | symbol={symbol} | "
+                f"evidence={evidence} | impact={impact} | fix={fix} | confidence={conf}"
+            )
+        return "\n".join(lines) if len(lines) > 1 else ""
 
     def _render_deterministic_api_list(
         self, chapter: dict, code_learning: dict

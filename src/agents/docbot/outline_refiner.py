@@ -244,22 +244,33 @@ class OutlineRefinerC:
             try:
                 from src.config.docbot.prompts import (
                     API_DOC_STRUCTURE_GUIDE,
+                    ARCHITECTURE_STRUCTURE_GUIDE,
+                    DEFECT_STRUCTURE_GUIDE,
+                    DESIGN_STRUCTURE_GUIDE,
+                    OPTIMIZATION_STRUCTURE_GUIDE,
+                    PERFORMANCE_STRUCTURE_GUIDE,
                     PRD_STRUCTURE_GUIDE,
+                    TESTCASE_STRUCTURE_GUIDE,
                 )
 
-                if report_type == "requirements":
-                    structure_guide = PRD_STRUCTURE_GUIDE
-                elif report_type == "api_doc":
-                    structure_guide = API_DOC_STRUCTURE_GUIDE
-                else:
-                    structure_guide = ""
+                _STRUCTURE_GUIDES = {
+                    "requirements": PRD_STRUCTURE_GUIDE,
+                    "api_doc": API_DOC_STRUCTURE_GUIDE,
+                    "defect": DEFECT_STRUCTURE_GUIDE,
+                    "design": DESIGN_STRUCTURE_GUIDE,
+                    "architecture": ARCHITECTURE_STRUCTURE_GUIDE,
+                    "testcase": TESTCASE_STRUCTURE_GUIDE,
+                    "optimization": OPTIMIZATION_STRUCTURE_GUIDE,
+                    "performance": PERFORMANCE_STRUCTURE_GUIDE,
+                }
+                structure_guide = _STRUCTURE_GUIDES.get(report_type, "")
 
                 if structure_guide:
                     prompt += (
                         "\n\n# v6-P0-E 文档结构优化引导\n"
                         "在优化大纲时, 请遵循以下通用原则, "
                         "但章节内容和分组必须基于代码学习结果 (code_summary / key_modules / AGENTS.md) 动态推导, "
-                        "禁止套用任何预设的业务域分组:\n\n"
+                        "禁止套用任何预设的业务域分组；YAML 仅为基线, 可按证据增删改章节:\n\n"
                         f"{structure_guide}"
                     )
             except Exception as e:  # noqa: BLE001

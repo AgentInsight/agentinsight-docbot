@@ -184,6 +184,93 @@ class MergerF:
         return content
 
     @classmethod
+    def _normalize_heading_levels(cls, content: str) -> str:
+        """规范化单章内标题层级, 避免合并后序号跳号/错层.
+
+        - 保留首个 ## 为章节标题
+        - 其余 ## 降为 ### (LLM 常误把子节写成 ##, 导致不参与重编号)
+        - ##### 及以上降为 #### (避免出现无编号的五级标题)
+        - 代码块内行不改动
+        """
+        lines = content.split("\n")
+        result: list[str] = []
+        seen_h2 = False
+        in_code_fence = False
+        for line in lines:
+            stripped = line.lstrip()
+            if stripped.startswith("```"):
+                in_code_fence = not in_code_fence
+                result.append(line)
+                continue
+            if in_code_fence:
+                result.append(line)
+                continue
+            match = re.match(r"^(#{2,6})\s+(.+)$", line)
+            if not match:
+                result.append(line)
+                continue
+            hashes, title = match.group(1), match.group(2)
+            indent = line[: len(line) - len(line.lstrip())]
+            if hashes == "##":
+                if not seen_h2:
+                    seen_h2 = True
+                    result.append(line)
+                else:
+                    result.append(f"{indent}### {title}")
+            elif len(hashes) >= 5:
+                result.append(f"{indent}#### {title}")
+            else:
+                result.append(line)
+        return "\n".join(result)
+
+    @classmethod
+    def _promote_orphan_h4(cls, content: str) -> str:
+        """若章内存在 #### 但不存在 ###, 将全部 #### 提升为 ###.
+
+        典型坏例: LLM 只写 #### 子节 → 旧逻辑生成 7.1.1/7.1.2 而缺少 7.1.
+        代码块内不改动.
+        """
+        has_h3 = False
+        has_h4 = False
+        in_code_fence = False
+        for line in content.split("\n"):
+            stripped = line.lstrip()
+            if stripped.startswith("```"):
+                in_code_fence = not in_code_fence
+                continue
+            if in_code_fence:
+                continue
+            match = re.match(r"^(#{2,6})\s+", line)
+            if not match:
+                continue
+            level = len(match.group(1))
+            if level == 3:
+                has_h3 = True
+            elif level == 4:
+                has_h4 = True
+        if not (has_h4 and not has_h3):
+            return content
+
+        out_lines: list[str] = []
+        in_code_fence = False
+        for line in content.split("\n"):
+            stripped = line.lstrip()
+            if stripped.startswith("```"):
+                in_code_fence = not in_code_fence
+                out_lines.append(line)
+                continue
+            if in_code_fence:
+                out_lines.append(line)
+                continue
+            match = re.match(r"^(#{4})\s+(.+)$", line)
+            if match:
+                indent = line[: len(line) - len(line.lstrip())]
+                out_lines.append(f"{indent}### {match.group(2)}")
+            else:
+                out_lines.append(line)
+        return "\n".join(out_lines)
+
+    @classmethod
     def _renumber_subheadings(cls, content: str, chapter_idx: int) -> str:
         """重新编号章节内的 ### 和 #### 子标题 (单遍遍历, 按出现顺序处理).
 
@@ -193,32 +280,47 @@ class MergerF:
         - 使用闭包 state = [0, 0] 模拟 nonlocal (state[0] = sub_idx, state[1] = subsub_idx)
         - 在替换前用 _strip_num_prefix 剥离 LLM 可能添加的不一致前缀
         - 单遍正则匹配 ### / #### (避免两遍替换导致 state 计数错乱)
-        - 防御性处理: 若 #### 出现在任何 ### 之前 (state[0]==0), 将 state[0] 设为 1
+        - 孤儿 #### (无父 ###): 提升为 ###, 避免出现无父节的 x.1.1
+        - 代码块内标题不重编号
         """
         state = [0, 0]  # state[0] = sub_idx, state[1] = subsub_idx
+        in_code_fence = False
+        out_lines: list[str] = []
 
-        def _replace_heading(match: re.Match) -> str:
+        for line in content.split("\n"):
+            stripped = line.lstrip()
+            if stripped.startswith("```"):
+                in_code_fence = not in_code_fence
+                out_lines.append(line)
+                continue
+            if in_code_fence:
+                out_lines.append(line)
+                continue
+
+            match = re.match(r"^(#{3,4})\s+(.+)$", line)
+            if not match:
+                out_lines.append(line)
+                continue
+
             level = match.group(1)  # '###' or '####'
             title = cls._strip_num_prefix(match.group(2).strip())
-            if level == '###':
+            indent = line[: len(line) - len(line.lstrip())]
+            if level == "###":
                 state[0] += 1
                 state[1] = 0  # 重置 #### 计数器
-                return f"### {chapter_idx}.{state[0]}. {title}"
+                out_lines.append(f"{indent}### {chapter_idx}.{state[0]}. {title}")
             else:  # ####
-                # 防御性: #### 出现在任何 ### 之前 (state[0]==0), 设为 1
+                # 孤儿 ####: 提升为 ###, 避免 ## 7 后直接出现 #### 7.1.1
                 if state[0] == 0:
-                    state[0] = 1
-                state[1] += 1
-                return f"#### {chapter_idx}.{state[0]}.{state[1]}. {title}"
-
-        # 单遍遍历: 按 ### / #### 在文档中的出现顺序处理 (避免两遍替换导致计数错乱)
-        content = re.sub(
-            r'^(#{3,4})\s+(.+)$',
-            _replace_heading,
-            content,
-            flags=re.MULTILINE,
-        )
-        return content
+                    state[0] += 1
+                    state[1] = 0
+                    out_lines.append(f"{indent}### {chapter_idx}.{state[0]}. {title}")
+                else:
+                    state[1] += 1
+                    out_lines.append(
+                        f"{indent}#### {chapter_idx}.{state[0]}.{state[1]}. {title}"
+                    )
+        return "\n".join(out_lines)
 
     @staticmethod
     def _concat_chapters(sorted_chapters: list[dict], chapters: list[dict] | None = None) -> str:
@@ -281,6 +383,11 @@ class MergerF:
 
             # 防御性清除 PlantUML/Mermaid 代码块 (避免 Diagram server error HTTP 400)
             content_md = MergerF._strip_diagram_blocks(content_md)
+
+            # 先规范化标题层级 (多余 ## → ###, #####+ → ####), 再统一编号
+            content_md = MergerF._normalize_heading_levels(content_md)
+            # 若章内仅有 #### 而无 ###, 全部提升为 ###, 避免出现无父节的 x.1.1
+            content_md = MergerF._promote_orphan_h4(content_md)
 
             # 规范化首个 ## 标题行: 替换为 `## {idx}. {title}`
             # 同时修复 LLM 误把 ADR 子标题写成 ## 的问题 (仅替换首行)

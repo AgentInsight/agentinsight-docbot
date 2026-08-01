@@ -1,205 +1,184 @@
 report_type: defect
 name_zh: 系统缺陷文档
-name_en: Defect Report Document
-default_chapters: 14
-max_chapters: 20
+name_en: Code Defect Analysis Report
+default_chapters: 12
+max_chapters: 18
 
 persona:
-  role: 质量工程师
-  mission: 记录系统缺陷全生命周期：发现、分级、复现、影响、修复、验证、根因、预防
+  role: 代码缺陷分析师
+  mission: 基于现有代码静态分析，输出详细到文件/符号/行号的缺陷清单（含证据、风险、修复建议），而非缺陷管理流程规范
   target_audience:
-    - 开发工程师：缺陷详情、修复方案、RCA
-    - 测试工程师：复现步骤、验证结果、回归范围
-    - SRE：线上缺陷处置、影响分析、应急预案
-    - 产品：业务影响、优先级、用户确认
+    - 开发工程师：定位缺陷位置、理解根因与修复建议
+    - 测试工程师：据此设计回归与边界用例
+    - 技术负责人：按严重度排期修复
 
 chapters:
   - idx: 1
     title: 引言
-    purpose: 阐明编写目的、适用范围与参考文档
+    purpose: 声明本文是代码级缺陷发现报告，明确分析范围与证据标准
     sections: []
     key_points:
-      - 编写目的（开发/测试/SRE/产品）
-      - 适用范围（来源/类型）
-      - 术语（Bug/RCA/SLA/MTTR/DoD）
-      - 参考文档
-      - 版本历史
+      - 编写目的：从现有代码中发现潜在缺陷并列出可定位条目，不是建立缺陷管理规范/SLA/角色职责
+      - 分析对象：仓库源码、异常处理、资源生命周期、并发共享状态、输入校验、错误传播
+      - 证据标准：每条缺陷须绑定 path:line（或符号）与 confidence；无证据标注 insufficient_evidence
+      - 严重度约定：Critical / High / Medium / Low（按技术影响，非业务工单优先级）
+      - 编号约定：DEF-001 起连续编号
+      - 版本与分析基线：仓库 commit/分支（若可得）与分析时间
 
   - idx: 2
-    title: 缺陷概述
-    purpose: 提供缺陷背景、范围与统计概览
+    title: 分析范围与方法
+    purpose: 说明分层定位方法与覆盖边界，避免空泛方法论堆砌
     sections: []
     key_points:
-      - 缺陷背景（发布/紧急修复/专项治理）
-      - 缺陷范围（In-Scope/Out-of-Scope）
-      - 统计概览（总数/严重/已修复/MTTR）
-      - 来源分布（测试/生产/用户/扫描/评审）
-      - 类型分布（功能/性能/安全/体验/数据/兼容）
+      - 分层定位：文件 → 类/函数/方法 → 行级编辑点（参考 Agentless 分层定位）
+      - 分析维度：异常处理、资源泄漏、并发隐患、安全/输入校验、逻辑边界、错误可观测性
+      - In-Scope：实现代码与配置中可静态推断的风险点
+      - Out-of-Scope：运行时未观测到的性能数字、未证实的 CVE 编号、缺陷管理流程/Jira 工作流
+      - confidence：high=代码模式明确；medium=需结合调用链推断；low=疑似/信息不足
+      - 禁止：编造漏洞编号、硬编码与本仓库无关的产品名、输出流程规范章节
 
   - idx: 3
-    title: 缺陷分级
-    purpose: 定义严重度与优先级分级标准
+    title: 缺陷总览
+    purpose: 汇总本次发现的缺陷数量、严重度与类型分布（必须来自后续清单，禁止虚构统计）
     sections: []
     key_points:
-      - 严重度 S0-S4（阻塞/严重/一般/轻微/提示）
-      - 优先级 P0-P4（4h/24h/1周/1月/待定）
-      - 严重度×优先级矩阵
-      - SLA 与升级路径（Lead→CTO）
-      - 分类标签（module/type/layer/source/root）
-
-  - idx: 4
-    title: 缺陷列表
-    purpose: 定义缺陷字段规范、清单与详情模板
-    sections: []
-    key_points:
-      - 字段规范（BUG-NNNN/标题/严重度/优先级）
-      - 缺陷清单（编号/标题/严重度/状态/负责人）
-      - 详情模板（基本信息/责任信息/关联信息）
+      - 发现总数与按严重度分布表（Critical/High/Medium/Low）
+      - 按类型分布：exception / leak / concurrency / security / logic / observability / other
+      - 按模块/目录 Top 分布（绑定真实 path）
+      - 最高风险 Top-N 摘要（每条一行：DEF-ID + 标题 + 路径）
+      - 证据覆盖率：带 path:line 的条目占比
     example: |
       ```markdown
-      ### BUG-NNNN <缺陷标题>
-      - **基本信息**：严重度 / 优先级 / 状态 / 类型 / 模块 / 层级
-      - **责任信息**：发现人 / 负责人 / 评审人 / 时间
-      - **关联信息**：需求 / 用例 / 缺陷 / PR / 监控
-      - **标签**：<label1> <label2>
+      | 严重度 | 数量 | 占比 |
+      |--------|------|------|
+      | Critical | N | ..% |
+      | High | N | ..% |
+      | Medium | N | ..% |
+      | Low | N | ..% |
+
+      | DEF-ID | 标题 | 严重度 | 位置 |
+      |--------|------|--------|------|
+      | DEF-001 | ... | Critical | src/foo.py:L42 |
+      ```
+
+  - idx: 4
+    title: 致命与高危缺陷清单
+    purpose: 详细列出 Critical/High 缺陷，每条落到代码位置与证据
+    sections: []
+    key_points:
+      - 仅收录 Critical/High；若无则明确写「未发现 Critical/High，见后续分类章」
+      - 每条必须含：DEF-ID、标题、严重度、类型、位置(path:line)、符号、证据、影响、复现要点、修复建议、confidence
+      - 优先覆盖：裸 except/吞异常、未关闭资源、竞态/死锁、注入/鉴权绕过、数据损坏风险
+      - 禁止流程字段：负责人/SLA/Jira 状态/升级路径
+    example: |
+      ```markdown
+      ### DEF-001 <缺陷标题> [严重度: Critical]
+      - **类型**: exception | leak | concurrency | security | logic | observability
+      - **位置**: `src/module/file.py:L42-L58`
+      - **符号**: `ClassName.method_name`
+      - **证据**: 简述反模式 + 引用 [src/module/file.py:L42-L58]；confidence: high|medium|low
+      - **影响**: 崩溃/数据损坏/安全暴露/静默失败等
+      - **复现要点**: 触发条件与期望/实际行为（可静态推断）
+      - **修复建议**: 具体改法（如改用 context manager、收窄 except、加锁顺序）
       ```
 
   - idx: 5
-    title: 复现步骤
-    purpose: 标准化复现环境、数据与步骤
+    title: 异常处理与错误传播缺陷
+    purpose: 枚举异常捕获、吞没、错误码丢失与错误传播链断裂等代码级问题
     sections: []
     key_points:
-      - 复现环境（Dev/Test/Staging/Prod）
-      - 复现数据（用户ID/参数/状态）
-      - 步骤模板（前置/操作/期望/实际/概率）
-      - 要素检查清单
-      - 不可复现处理（埋点/观察期/升级）
+      - 裸 except / except Exception 过宽捕获清单（path:line）
+      - 异常吞没（pass/仅日志无 re-raise/无返回错误）清单
+      - 错误传播断裂：下层抛错被上层改写为成功或丢失上下文
+      - 用户可见错误信息不当（泄露内部细节或完全无提示）
+      - 每条用 DEF-NNN 条目模板，含证据与修复建议
 
   - idx: 6
-    title: 影响分析
-    purpose: 多维度评估缺陷影响
+    title: 资源泄漏与生命周期缺陷
+    purpose: 枚举文件句柄、连接、锁、临时资源在异常路径未释放等问题
     sections: []
     key_points:
-      - 业务影响（功能/用户数/损失/SLA）
-      - 用户影响（用户群/降级/风险/投诉）
-      - 技术影响（模块/一致性/稳定性/性能）
-      - 合规与安全（CVE/CWE/审计）
-      - 影响量化与分级（高/中/低）
+      - 文件/流未 close 或未用 with/上下文管理器
+      - DB/HTTP/Redis 连接获取后异常路径未释放
+      - 锁 acquire 后缺少 finally/上下文释放
+      - 临时文件/目录清理缺失
+      - 每条绑定 path:line + 符号 + confidence
 
   - idx: 7
-    title: 修复方案
-    purpose: 制定结构化修复方案
+    title: 并发竞态与共享状态隐患
+    purpose: 枚举竞态、死锁风险、非原子共享可变状态与异步取消问题
     sections: []
     key_points:
-      - 修复模板（策略/范围/工时/回滚）
-      - 修复策略（直接/规避/灰度/开关）
-      - 评审检查清单
-    example: |
-      ```markdown
-      ### BUG-NNNN 修复方案
-      - **修复策略**：直接修复 / 临时规避 / 灰度修复
-      - **修复范围**：<文件 / 模块 / 接口>
-      #### 代码变更
-      | 文件 | 变更类型 | 说明 |
-      |------|---------|------|
-      | <文件> | 修改/新增/删除 | <说明> |
-      #### 变更代码片段
-      ```<lang>
-      // 修改前 <旧代码>
-      // 修改后 <新代码>
-      ```
-      #### 回滚方案
-      - 触发条件：<列表>
-      - 回滚步骤：1. <步骤>
-      ```
+      - 全局/模块级可变状态无保护读写
+      - 锁粒度/锁顺序可能导致死锁的调用点
+      - 检查后使用（TOCTOU）模式
+      - 异步任务取消/超时后资源与状态不一致
+      - 每条给出最小复现思路与修复建议（分段锁/不可变/原子操作等）
 
   - idx: 8
-    title: 验证结果
-    purpose: 定义验证策略与关闭确认
+    title: 安全与输入校验缺陷
+    purpose: 枚举注入、鉴权缺口、敏感信息硬编码、不安全反序列化等（仅有代码证据时）
     sections: []
     key_points:
-      - 验证策略（单元/集成/回归/验收/性能）
-      - 验证结果记录（✅/⚠️）
-      - 回归测试范围
-      - 自动化验证（CI/覆盖率）
-      - 用户确认与验证结论
-      - 关闭确认矩阵
+      - 未校验/未净化的外部输入进入 SQL/命令/路径/模板
+      - 鉴权/授权缺失或可绕过的路由/处理器
+      - 密钥/Token 硬编码或日志打印敏感字段
+      - 不安全反序列化 / SSRF / 路径穿越（须有证据）
+      - 禁止臆造 CVE；CWE 仅在模式明确时标注；无安全问题则写 insufficient_evidence
 
   - idx: 9
-    title: 预防措施
-    purpose: 基于根因制定预防措施
+    title: 逻辑边界与数据一致性缺陷
+    purpose: 枚举边界条件、空值、状态机非法迁移、事务边界不当等逻辑缺陷
     sections: []
     key_points:
-      - 预防模板（根因/类别/责任人/状态）
-      - 分类（流程/自动化/工具/培训/架构）
-      - 流程改进清单
-      - Checklist 沉淀
-      - 自动化防护（SonarQube/SAST/覆盖率≥80%）
-      - 培训与分享
+      - 空值/空集合未处理导致异常或错误结果
+      - Off-by-one、分页/切片边界错误
+      - 状态迁移缺少守卫（非法状态被接受）
+      - 事务边界过宽/过窄导致部分提交或不一致
+      - 每条含期望行为 vs 代码实际行为对照
 
   - idx: 10
-    title: 缺陷生命周期管理
-    purpose: 定义状态机与责任人矩阵
+    title: 可观测性与失败诊断缺口
+    purpose: 枚举失败路径缺少日志/指标/关联 ID 导致缺陷难定位的问题
     sections: []
     key_points:
-      - 状态机（New→Assigned→...→Closed）
-      - 状态定义与 SLA
-      - 状态流转规则
-      - 责任人矩阵
-      - 工具集成（Jira/GitHub/GitLab）
+      - 关键 except 路径无日志或日志级别不当
+      - 错误返回未携带可关联的 request/trace id
+      - 静默降级无指标/告警钩子
+      - 与缺陷复现相关的诊断信息缺失
+      - 每条说明「缺什么观测」与建议埋点位置（path:line）
 
   - idx: 11
-    title: 根本原因分析 (RCA)
-    purpose: 用 5 Whys / 鱼骨图 / FTA 深挖根因
+    title: 修复优先级建议
+    purpose: 基于严重度×影响面×修复成本给出排期建议（面向工程，非 SLA 流程）
     sections: []
     key_points:
-      - RCA 模板（5 Whys/鱼骨图/根因类别）
-      - 根因分类（代码/设计/流程/沟通/环境/第三方）
-      - 根因深度（L1-L4）
-      - RCA 评审
+      - P0/P1/P2 建议表：对应 DEF-ID 列表（非组织级 SLA 小时数）
+      - 快速修复项（小改动高收益）vs 结构性修复项
+      - 建议回归点：应补充的测试场景（绑定到缺陷位置）
+      - 风险残留：因证据不足标为 low confidence 的条目后续验证建议
+      - 禁止：角色职责矩阵、状态机 New→Closed、Jira 工作流
 
   - idx: 12
-    title: 缺陷统计与度量
-    purpose: 定义关键指标与度量报表
-    sections: []
-    key_points:
-      - 关键指标（密度/逃逸率/MTTR/修复率）
-      - 缺陷分布（模块/类型/严重度/来源/根因）
-      - 趋势分析（30 天趋势）
-      - 度量报表（周报/月报/专项）
-      - 度量看板与改进
-
-  - idx: 13
-    title: 知识沉淀与复盘
-    purpose: 建立经验库与复盘机制
-    sections: []
-    key_points:
-      - 经验库（编号/主题/类别/链接）
-      - 复盘机制（S0/S1/重复缺陷触发）
-      - 复盘模板（时间线/根因/改进项）
-      - 培训与分享
-      - Checklist 演进
-      - 知识传承
-
-  - idx: 14
     title: 附录
-    purpose: 提供模板速查与参考资料
+    purpose: 提供缺陷索引、证据路径汇总与分类参考
     sections: []
     key_points:
-      - 模板速查（详情/复现/修复/RCA）
-      - 缺陷-用例-需求追踪矩阵
-      - 缺陷-根因-预防追踪矩阵
-      - 工具与集成（Jira/SonarQube/SENTRY）
-      - 分类参考（IEEE 1044/CWE/CVE）
-      - 参考资料
+      - 全量 DEF-ID 索引表（编号/标题/严重度/类型/路径）
+      - 证据路径清单（去重后的 path 列表）
+      - 类型→章节对照
+      - 可选 CWE/通用反模式对照（仅作分类参考，禁止伪造 CVE）
+      - 分析方法局限与后续动态验证建议
 
 writing_rules:
-  - 编号约定：BUG/RCA/PREV/REPRO/KB-NNN
-  - 关联 PR/Commit/用例/监控
-  - 严重度按技术影响，优先级按业务紧急度
-  - P0/P1 必须做 RCA 与复盘
-  - 状态流转遵循状态机
-  - 经验库持续沉淀
+  - 核心产出是代码级缺陷列表，不是缺陷管理规范/流程/角色/SLA
+  - 编号：DEF-001 起连续；严重度用 Critical/High/Medium/Low
+  - 每条缺陷必须含位置（path:line 或符号）+ 证据 + confidence + 修复建议
+  - 禁止硬编码与本仓库无关的特定产品名；仅使用代码中真实出现的标识符
+  - 禁止臆造 CVE/漏洞编号；CWE 仅在模式明确时可选标注
+  - 禁止输出 Jira/状态机/负责人矩阵/MTTR 运营指标作为正文主体
+  - 无证据时写 insufficient_evidence，禁止编造行号与路径
+  - 图表用文字+表格；禁止 PlantUML/Mermaid
 
 output_format:
   default_language: zh

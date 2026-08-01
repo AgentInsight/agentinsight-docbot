@@ -290,7 +290,7 @@ CREATE TABLE IF NOT EXISTS report_limits (
     id BIGSERIAL PRIMARY KEY,
     agent_id VARCHAR(64),                     -- NULL = 全局默认; 非 NULL = Agent 级/用户级
     user_id VARCHAR(64),                      -- NULL = (agent_id 级) 默认; 非 NULL = 用户专属
-    daily_limit INTEGER NOT NULL DEFAULT 5,    -- 每日报告生成限额 (0 = 不限制)
+    daily_limit INTEGER NOT NULL DEFAULT 5,    -- 每日报告生成限额 (>0 有效; 0/缺失回退下级或默认, 不表示不限制)
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -324,6 +324,14 @@ SELECT NULL, NULL, 5
 WHERE NOT EXISTS (
     SELECT 1 FROM report_limits
     WHERE agent_id IS NULL AND user_id IS NULL
+);
+-- 预置 docbot Agent 级默认限额 (agent_id='agentinsight-docbot', user_id IS NULL, daily_limit=3)
+-- 用户有专属限额时取用户级; 否则取本行 Agent 级; 再否则回退全局默认
+INSERT INTO report_limits (agent_id, user_id, daily_limit)
+SELECT 'agentinsight-docbot', NULL, 3
+WHERE NOT EXISTS (
+    SELECT 1 FROM report_limits
+    WHERE agent_id = 'agentinsight-docbot' AND user_id IS NULL
 );
 
 -- ========== 业务表: 每日报告生成使用次数 (从 Redis 迁移到数据库) ==========

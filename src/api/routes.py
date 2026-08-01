@@ -381,6 +381,91 @@ async def chat_completions(
     thread_id = f"{agent_id}:{session_id}"
     graph_config = {"configurable": {"thread_id": thread_id}}
 
+    # 每日文档生成限额检查 (与 researcher 对齐: 覆盖全部已解析 user_id, 含 JWT / IP)
+    # 计数语义: 单次请求一个仓库, 每个报告类型计 1 份; 请求前预检, 成功保存后按实际成功份数扣减
+    # 限额从数据库 report_limits 表读取 (用户级 → Agent 级默认 3 → 全局 → settings)
+    if user_id and agent_id:
+        from src.api.ip_user_resolver import (
+            check_daily_report_limit,
+            count_requested_docs,
+        )
+
+        requested_docs = count_requested_docs(list(report_types))
+        allowed, current_count, effective_limit = await check_daily_report_limit(
+            user_id, agent_id, requested_count=requested_docs
+        )
+        if not allowed:
+            remaining = max(0, effective_limit - current_count)
+            if remaining <= 0:
+                limit_msg = (
+                    f"您今日的文档生成次数已达上限 ({current_count}/{effective_limit})。"
+                    f"每日限额将在北京时间次日 0 点重置, 届时可继续使用。"
+                )
+            else:
+                limit_msg = (
+                    f"您今日文档生成剩余次数为 {remaining}，"
+                    f"不足以生成本次请求的 {requested_docs} 份文档"
+                    f"（每个报告类型计为 1 份）。"
+                    f"每日限额为 {effective_limit} 份，已用 {current_count} 份。"
+                    f"每日限额将在北京时间次日 0 点重置, 届时可继续使用。"
+                )
+            if request.stream:
+                # 流式: 发送友好提示后关闭 SSE (OpenAI 兼容契约与 researcher 一致)
+                async def _limit_exceeded_stream() -> Any:
+                    completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+                    chunk = {
+                        "id": completion_id,
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": request.model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"content": limit_msg},
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
+                    yield f"data: {orjson.dumps(chunk).decode('utf-8')}\n\n"
+                    done_chunk = {
+                        "id": completion_id,
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": request.model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {},
+                                "finish_reason": "stop",
+                            }
+                        ],
+                    }
+                    yield f"data: {orjson.dumps(done_chunk).decode('utf-8')}\n\n"
+                    yield "data: [DONE]\n\n"
+
+                return StreamingResponse(
+                    _limit_exceeded_stream(),
+                    media_type="text/event-stream",
+                    headers={
+                        "Cache-Control": "no-cache, no-transform",
+                        "Connection": "keep-alive",
+                        "X-Accel-Buffering": "no",
+                        "X-Session-Id": session_id,
+                    },
+                )
+            # 非流式: 返回 JSON 错误 (OpenAI 兼容 error 结构)
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": {
+                        "message": limit_msg,
+                        "type": "rate_limit_exceeded",
+                        "code": "daily_report_limit",
+                    }
+                },
+                headers={"X-Session-Id": session_id},
+            )
+
     if request.stream:
         return StreamingResponse(
             _stream_docbot(
@@ -605,6 +690,25 @@ async def _stream_docbot(
                 if persisted_reports_meta:
                     yield _sse_chunk({"reports": persisted_reports_meta})
 
+                # 文档生成成功后按实际成功份数递增每日计数
+                # 每个成功持久化的 report_id 计 1 份; 失败/空结果不计数
+                _uid = initial_state.get("user_id", "") or ""
+                _aid = initial_state.get("agent_id", "") or ""
+                success_docs = len(persisted_report_ids)
+                if success_docs > 0 and _uid and _aid:
+                    try:
+                        from src.api.ip_user_resolver import increment_daily_report_count
+
+                        await increment_daily_report_count(_uid, _aid, delta=success_docs)
+                    except Exception:
+                        logger.warning(
+                            "每日文档计数递增失败 (user=%s, session=%s, delta=%d, 不阻断主流程)",
+                            _uid,
+                            session_id,
+                            success_docs,
+                            exc_info=True,
+                        )
+
         except Exception as e:
             logger.exception("docbot 流水线执行失败")
             _err_msg = f"\n\n**文档生成失败**: {str(e)[:200]}"
@@ -757,6 +861,28 @@ async def _run_docbot(
             }
             report_ids = []
             reports_meta = []
+
+    # 文档生成成功后按实际成功份数递增每日计数
+    # 仅报告内容非空且未失败时计数; 失败/异常不计数; 每个成功 report_id 计 1 份
+    _uid_final = initial_state.get("user_id", "") or ""
+    _aid_final = initial_state.get("agent_id", "") or ""
+    success_docs_final = len(report_ids)
+    if (
+        success_docs_final > 0
+        and content
+        and "文档生成失败" not in content
+        and "未生成报告内容" not in content
+        and _uid_final
+        and _aid_final
+    ):
+        try:
+            from src.api.ip_user_resolver import increment_daily_report_count
+
+            await increment_daily_report_count(
+                _uid_final, _aid_final, delta=success_docs_final
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("每日文档计数递增失败 (不阻断响应): %s", e)
 
     return ChatCompletionResponse(
         id=completion_id,

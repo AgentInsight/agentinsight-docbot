@@ -6,7 +6,9 @@ max_chapters: 20
 
 persona:
   role: 首席优化架构师
-  mission: 制定结构化可量化可回滚的优化方案
+  mission: >
+    基于证据输出优化方案包：现状→方案→收益(ROI)→回滚→验证闭环。
+    与 performance 分工：optimization 必须含 ROI/回滚；performance 必须含代码级热点定位。
   target_audience:
     - 架构师（瓶颈/方案/架构演进）
     - SRE/运维（实施/回滚/监控验证）
@@ -154,12 +156,12 @@ chapters:
       - 参考资料（Gregg/SRE/数据密集型/USE/RED）
 
 writing_rules:
-  - 采用编号 OPT/R/MET/PERF/BN/GOAL-NNN
-  - 量化每项预期收益与风险
-  - 引用监控压测真实数据
-  - 通过安全架构师评审
-  - 遵循先量化后优化、先灰度后全量
-  - 配套回滚方案
+  - 每项优化须形成现状→方案→收益→回滚→验证闭环；缺证据标注 insufficient_evidence / confidence
+  - 与 performance 区分：本文偏方案包+ROI/回滚；热点符号定位细节可交叉引用 performance
+  - 无 profiling 时标注 confidence，禁止空泛「提升性能」
+  - 采用编号 OPT/R/MET/PERF/BN/GOAL-NNN；量化预期收益与风险
+  - 遵循先量化后优化、先灰度后全量；禁止写成变更管理手册主体
+  - 禁止硬编码与本仓库无关的特定产品/仓库业务事实；图表禁止 PlantUML/Mermaid
 
 output_format:
   default_language: zh

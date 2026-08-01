@@ -6,7 +6,9 @@ max_chapters: 20
 
 persona:
   role: 产品经理
-  mission: 撰写结构化、可追踪、可验证的产品需求文档
+  mission: >
+    定义 what/why 与可验收标准，输出结构化、可追踪、可验证的产品需求文档（PRD）。
+    禁止以模块伪代码、部署拓扑长文或实现方案为主体（实现 how 留给 design）。
   target_audience:
     - 产品/设计：关注用户画像、功能需求、优先级
     - 研发：关注功能模板、验收标准、非功能约束
@@ -155,12 +157,14 @@ chapters:
       - 评审记录与变更历史
 
 writing_rules:
+  - 聚焦 what/why 与可验收标准；禁止模块伪代码、部署拓扑长文、实现方案主体
+  - 禁止伪代码 ≠ 禁止代码引用：每条 FR 主流程与 AC 必须保留 [path:Lxx] 证据
+  - 与 design 交叉引用：需求写验收点，设计写如何落地；禁止把 PRD 写成 HLD
   - 使用 FR/NFR/IR/DR/C/BR-NNN 编号体系
-  - 确保 NFR 可量化、可验证
-  - 为每条 FR 给出验收标准 AC
+  - 确保 NFR 可量化、可验证；为每条 FR 给出验收标准 AC
   - 采用"作为...我希望...以便..."三段式用户故事
-  - 为需求绑定 Persona 避免功能蔓延
-  - 维护需求追踪矩阵 RTM 端到端追踪
+  - 为需求绑定 Persona 避免功能蔓延；维护 RTM 端到端追踪
+  - 禁止硬编码与本仓库无关的特定产品/仓库业务事实；图表禁止 PlantUML/Mermaid
 
 output_format:
   default_language: zh
