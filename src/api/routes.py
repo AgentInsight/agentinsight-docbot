@@ -197,6 +197,12 @@ async def _persist_assistant_message(
 
     在流式/非流式响应完成后调用 (后台任务, 不阻塞用户响应).
     失败仅告警, 不阻断主流程.
+
+    metadata 约定 (generate_docs 成功时):
+    - intent: "generate_docs"
+    - report_ids: list[str]
+    - reports: list[{report_id, report_type, title, summary, download_urls}]
+      前端加载历史会话时据此恢复「生成的文档」下载链接
     """
     try:
         from src.memory.session_store import get_session_store
@@ -216,6 +222,16 @@ async def _persist_assistant_message(
             session_id,
             exc_info=True,
         )
+
+
+def _build_download_urls(report_id: str) -> dict[str, str]:
+    """按 report_id 构造 5 种格式的下载相对路径."""
+    if not report_id:
+        return {}
+    return {
+        fmt: f"/v1/reports/{report_id}/download?format={fmt}"
+        for fmt in ("markdown", "html", "pdf", "docx", "json")
+    }
 
 
 def _parse_docbot_instruction(content: str) -> dict[str, Any]:
@@ -390,7 +406,7 @@ async def chat_completions(
             request,
             session_id,
         )
-        # 会话持久化: 保存 assistant 消息到 chat_messages
+        # 会话持久化: 保存 assistant 消息到 chat_messages (含报告元数据供历史恢复)
         if user_id and agent_id:
             content = docbot_response.choices[0]["message"]["content"]
             if content:
@@ -401,7 +417,8 @@ async def chat_completions(
                     content,
                     metadata={
                         "intent": "generate_docs",
-                        "report_ids": docbot_response.report_ids,
+                        "report_ids": docbot_response.report_ids or [],
+                        "reports": docbot_response.reports or [],
                     },
                 )
         return _with_session_id(docbot_response, session_id)
@@ -453,6 +470,9 @@ async def _stream_docbot(
     yield _sse_chunk({"role": "assistant"})
 
     collected_content: list[str] = []
+    # 报告元数据提升到外层, 供流结束后写入 chat_messages.message_metadata
+    persisted_report_ids: list[str] = []
+    persisted_reports_meta: list[dict[str, Any]] = []
 
     # 根 span 包裹整次文档生成
     async with trace_agent(
@@ -540,18 +560,16 @@ async def _stream_docbot(
                 yield _sse_chunk({"content": hint})
             else:
                 # 推送每份报告的元信息 (含 download_urls, 前端用于构造下载链接)
-                report_ids: list[str] = []
                 summaries: list[str] = []
-                reports_meta: list[dict[str, Any]] = []
                 for rpt in final_reports:
                     if not isinstance(rpt, dict):
                         continue
                     rid = rpt.get("report_id", "")
                     if rid:
-                        report_ids.append(rid)
+                        persisted_report_ids.append(rid)
                     title = rpt.get("title") or rpt.get("report_type", "")
                     summary = rpt.get("summary", "")
-                    download_urls = rpt.get("download_urls", {})
+                    download_urls = rpt.get("download_urls") or _build_download_urls(str(rid))
                     if summary:
                         summaries.append(f"### {title}\n\n{summary}")
                     report_meta = {
@@ -561,7 +579,7 @@ async def _stream_docbot(
                         "summary": summary,
                         "download_urls": download_urls,
                     }
-                    reports_meta.append(report_meta)
+                    persisted_reports_meta.append(report_meta)
                     # 推送单份报告元信息 (前端用于展示报告卡片 + 下载链接)
                     yield _sse_chunk({"report": report_meta})
 
@@ -579,10 +597,10 @@ async def _stream_docbot(
                     await asyncio.sleep(0.001)
 
                 # 推送 report_ids + reports 元信息 (前端用于构造下载链接)
-                if report_ids:
-                    yield _sse_chunk({"report_ids": report_ids})
-                if reports_meta:
-                    yield _sse_chunk({"reports": reports_meta})
+                if persisted_report_ids:
+                    yield _sse_chunk({"report_ids": persisted_report_ids})
+                if persisted_reports_meta:
+                    yield _sse_chunk({"reports": persisted_reports_meta})
 
         except Exception as e:
             logger.exception("docbot 流水线执行失败")
@@ -603,7 +621,7 @@ async def _stream_docbot(
             yield "data: [DONE]\n\n"
             return
 
-    # 会话持久化: 保存 assistant 消息
+    # 会话持久化: 保存 assistant 消息 (含 reports 元数据, 刷新会话后可恢复下载链接)
     if save_user_id and save_agent_id and collected_content:
         full_response = "".join(collected_content)
         if full_response:
@@ -612,7 +630,11 @@ async def _stream_docbot(
                 save_agent_id,
                 save_user_id,
                 full_response,
-                metadata={"intent": "generate_docs"},
+                metadata={
+                    "intent": "generate_docs",
+                    "report_ids": persisted_report_ids,
+                    "reports": persisted_reports_meta,
+                },
             )
 
     yield _sse_chunk({}, finish_reason="stop")
@@ -790,18 +812,28 @@ async def list_session_reports(
         user_id=user_id,
         limit=50,
     )
-    return [
-        {
-            "report_id": r.get("report_id"),
-            "session_id": r.get("session_id"),
-            "query": (r.get("query", "") or "")[:200],
-            "report_format": r.get("report_format", "markdown"),
-            "agent_role": r.get("agent_role"),
-            "created_at": r.get("created_at"),
-            "updated_at": r.get("updated_at"),
-        }
-        for r in reports
-    ]
+    # 附带 title/summary/download_urls, 供前端刷新会话后恢复「生成的文档」下载区
+    # (save_reports_node 将 title 写入 query 字段, summary 写入 report_summary)
+    result: list[dict[str, Any]] = []
+    for r in reports:
+        rid = str(r.get("report_id") or "")
+        title = (r.get("query", "") or r.get("report_type_label", "") or "技术文档")[:200]
+        result.append(
+            {
+                "report_id": rid,
+                "session_id": r.get("session_id"),
+                "query": title,
+                "report_format": r.get("report_format", "markdown"),
+                "agent_role": r.get("agent_role"),
+                "report_type": r.get("report_type_label") or r.get("agent_role") or "",
+                "title": title,
+                "summary": r.get("report_summary") or "",
+                "download_urls": _build_download_urls(rid),
+                "created_at": r.get("created_at"),
+                "updated_at": r.get("updated_at"),
+            }
+        )
+    return result
 
 
 @router.get("/reports/{report_id}/download")

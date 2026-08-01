@@ -233,6 +233,15 @@ class TestListSessionReports:
         assert isinstance(result, list)
         assert len(result) == 2
         assert result[0]["report_id"] == "test-uuid-1"
+        # 附带 title/summary/download_urls, 供前端刷新后恢复下载区
+        assert result[0]["title"] == "测试1"
+        assert "download_urls" in result[0]
+        assert result[0]["download_urls"]["markdown"] == (
+            "/v1/reports/test-uuid-1/download?format=markdown"
+        )
+        assert result[0]["download_urls"]["pdf"] == (
+            "/v1/reports/test-uuid-1/download?format=pdf"
+        )
 
     async def test_list_session_reports_empty(self, mock_settings: Any) -> None:
         """空 session 应返回空列表."""
@@ -285,5 +294,7 @@ class TestListSessionReports:
                 authorization="Bearer test-jwt",
             )
 
-        # query 应被截断到 200 字符
+        # query / title 应被截断到 200 字符
         assert len(result[0]["query"]) <= 200
+        assert len(result[0]["title"]) <= 200
+        assert result[0]["title"] == result[0]["query"]
