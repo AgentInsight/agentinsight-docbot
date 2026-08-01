@@ -393,8 +393,11 @@ async def chat_completions(
             ),
             media_type="text/event-stream",
             headers={
-                "Cache-Control": "no-cache",
+                # no-transform: 禁止中间代理改写/缓冲 SSE 体
+                "Cache-Control": "no-cache, no-transform",
                 "Connection": "keep-alive",
+                # 禁用 Nginx 等反向代理对 SSE 的缓冲, 保证进度帧实时到达浏览器
+                "X-Accel-Buffering": "no",
                 "X-Session-Id": session_id,
             },
         )
