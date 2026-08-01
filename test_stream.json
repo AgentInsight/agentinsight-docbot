@@ -1,1 +1,0 @@
-{"model":"agentinsight-docbot","messages":[{"role":"user","content":"{\"action\":\"generate_docs\",\"repo_id\":\"ad7e4cbadcc049158e1b936e1412c4b0\",\"report_types\":[\"architecture\"],\"report_format\":\"markdown\",\"language\":\"zh\"}"}],"stream":true}
