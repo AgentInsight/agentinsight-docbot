@@ -1,0 +1,32 @@
+{
+  "session_id": "3f7ce941-ca98-4b4b-8128-57f29cd8a123",
+  "elapsed_s": 584.9496533870697,
+  "reports": [
+    {
+      "report_id": "1d5ee11a-3a33-4d40-81a0-01f5970c5964",
+      "report_type": "requirements",
+      "title": "agentinsight-demo 统一前端演示平台产品需求文档（PRD）",
+      "summary": "本文档为 agentinsight-demo 统一前端演示平台的产品需求文档，覆盖产品定位、用户分析、功能与非功能需求、接口与数据需求、约束条件、需求追踪、优先级路线图及风险依赖。平台为 docbot 和 researcher 两个智能体提供统一 UI，前端仅承载展示与 API 调用，不承载业务逻辑。文档详细定义了多 Agent 切换、流式交互、会话管理、报告生成、代码仓库管理、MCP 配置、人在回路审核、用户认证等核心功能，并明确了性能、安全等非功能需求及实现约束。",
+      "download_urls": {
+        "markdown": "/v1/reports/1d5ee11a-3a33-4d40-81a0-01f5970c5964/download?format=markdown",
+        "html": "/v1/reports/1d5ee11a-3a33-4d40-81a0-01f5970c5964/download?format=html",
+        "pdf": "/v1/reports/1d5ee11a-3a33-4d40-81a0-01f5970c5964/download?format=pdf",
+        "docx": "/v1/reports/1d5ee11a-3a33-4d40-81a0-01f5970c5964/download?format=docx",
+        "json": "/v1/reports/1d5ee11a-3a33-4d40-81a0-01f5970c5964/download?format=json"
+      }
+    },
+    {
+      "report_id": "c0d788b1-c218-46f7-80cc-dcab8fa44c45",
+      "report_type": "api_doc",
+      "title": "AGENTS.md 统一前端演示平台 API 参考文档",
+      "summary": "本文档为 agentinsight-demo 统一前端演示平台的 API 参考，涵盖前端 Next.js API Routes 与智能体后端 OpenAI 兼容接口。内容包括接口定义、请求参数、响应格式、认证授权、错误码、限流配额、版本管理、SDK 示例、安全合规及附录。文档基于源码 AST 确定性提取，确保接口契约准确可靠，为前端开发者和系统集成方提供完整参考。",
+      "download_urls": {
+        "markdown": "/v1/reports/c0d788b1-c218-46f7-80cc-dcab8fa44c45/download?format=markdown",
+        "html": "/v1/reports/c0d788b1-c218-46f7-80cc-dcab8fa44c45/download?format=html",
+        "pdf": "/v1/reports/c0d788b1-c218-46f7-80cc-dcab8fa44c45/download?format=pdf",
+        "docx": "/v1/reports/c0d788b1-c218-46f7-80cc-dcab8fa44c45/download?format=docx",
+        "json": "/v1/reports/c0d788b1-c218-46f7-80cc-dcab8fa44c45/download?format=json"
+      }
+    }
+  ]
+}

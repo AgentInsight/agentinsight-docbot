@@ -394,6 +394,30 @@ class ContentFillerD:
             # 触发条件: api_doc 类型 + API 详情章节 + code_learning 含 http_endpoints
             # 失败降级: 任何异常或空结果都回退到下方整章节生成流程, 不阻断主流程
             # 注意: 若接口级生成成功, 直接返回, 不进入后续 RAG / LLM / refine 流程
+
+            # TOK-D5: API 清单/概览章优先确定性表格, 跳过整章 LLM
+            if (
+                report_type == "api_doc"
+                and self._is_api_list_chapter(chapter)
+                and not self._is_api_detail_chapter(chapter)
+                and isinstance(code_learning, dict)
+                and code_learning.get("http_endpoints")
+            ):
+                try:
+                    det = self._render_deterministic_api_list(chapter, code_learning)
+                    if det:
+                        span.update(
+                            output={"content_length": len(det), "image_count": 0},
+                            metadata={"tok_d5_deterministic_api_list": True},
+                        )
+                        return {
+                            "chapter_idx": chapter_idx,
+                            "content_md": det,
+                            "image_svgs": [],
+                        }
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("TOK-D5: 确定性 API 清单失败 (降级 LLM): %s", e)
+
             if (
                 report_type == "api_doc"
                 and self._is_api_detail_chapter(chapter)
@@ -420,49 +444,93 @@ class ContentFillerD:
                                 "v10-P0-5: 接口级生成章节 %s 路径修正异常: %s",
                                 chapter_idx, e,
                             )
-                        try:
-                            from src.agents.docbot.symbol_validator import SymbolValidator
-
-                            sv = SymbolValidator()
-                            sv.build_from_code_learning(code_learning)
-                            if sv._built:
-                                sv_result = sv.validate_document(content_md)
-                                if not sv_result["valid"]:
-                                    hall_syms = sv_result["hallucinated_symbols"]
-                                    logger.warning(
-                                        "v10-P0-7: 接口级生成章节 %s 检测到 %d 个幻觉符号, 触发重写",
-                                        chapter_idx, len(hall_syms),
-                                    )
-                                    rewrite_prompt = self._build_hallucination_rewrite_prompt(
-                                        original_content=content_md,
-                                        hallucinated_symbols=hall_syms,
-                                        chapter=chapter,
-                                        code_learning=code_learning,
-                                    )
-                                    rewrite_resp = await self.llm.achat(
-                                        [{"role": "user", "content": rewrite_prompt}],
-                                        tier=LLMTier.SMART,
-                                        session_id=llm_session_id,
-                                        span_name=f"docbot.content_fill.endpoint_hallucination_rewrite.{chapter_idx}",
-                                        max_tokens=8192,
-                                        reasoning_effort="none",
-                                    )
-                                    if rewrite_resp.content and len(rewrite_resp.content) > 100:
-                                        content_md = rewrite_resp.content
-                                        logger.info(
-                                            "v10-P0-7: 接口级生成章节 %s 幻觉重写成功",
-                                            chapter_idx,
-                                        )
-                        except Exception as e:  # noqa: BLE001
-                            logger.warning(
-                                "v10-P0-7: 接口级生成章节 %s 幻觉校验异常: %s",
-                                chapter_idx, e,
+                        card_mode = str(
+                            getattr(
+                                settings or self.settings,
+                                "api_endpoint_card_mode",
+                                "deterministic",
                             )
+                            or "deterministic"
+                        ).lower()
+                        # 确定性 AST 卡片: 禁止 strip+rewrite (SymbolValidator 误报会破坏真源)
+                        if card_mode != "llm":
+                            logger.info(
+                                "TOK-D4-EP: 确定性卡片章节 %s 跳过幻觉 strip/rewrite",
+                                chapter_idx,
+                            )
+                        else:
+                            try:
+                                from src.agents.docbot.symbol_validator import SymbolValidator
+
+                                sv = SymbolValidator()
+                                sv.build_from_code_learning(code_learning)
+                                if sv._built:
+                                    sv_result = sv.validate_document(content_md)
+                                    if not sv_result["valid"]:
+                                        hall_syms = sv_result["hallucinated_symbols"]
+                                        min_syms = int(
+                                            getattr(
+                                                settings or self.settings,
+                                                "hallucination_rewrite_min_symbols",
+                                                8,
+                                            )
+                                            or 8
+                                        )
+                                        if len(hall_syms) < min_syms:
+                                            logger.info(
+                                                "TOK-D4-EP: 接口级章节 %s 幻觉符号 %d < 阈值 %d, "
+                                                "跳过 strip/LLM 重写",
+                                                chapter_idx,
+                                                len(hall_syms),
+                                                min_syms,
+                                            )
+                                        else:
+                                            logger.warning(
+                                                "v10-P0-7: 接口级生成章节 %s 检测到 %d 个幻觉符号, 触发重写",
+                                                chapter_idx,
+                                                len(hall_syms),
+                                            )
+                                            rewrite_prompt = self._build_hallucination_rewrite_prompt(
+                                                original_content=content_md,
+                                                hallucinated_symbols=hall_syms,
+                                                chapter=chapter,
+                                                code_learning=code_learning,
+                                            )
+                                            rewrite_resp = await self.llm.achat(
+                                                [{"role": "user", "content": rewrite_prompt}],
+                                                tier=LLMTier.SMART,
+                                                session_id=llm_session_id,
+                                                span_name=(
+                                                    f"docbot.content_fill."
+                                                    f"endpoint_hallucination_rewrite.{chapter_idx}"
+                                                ),
+                                                max_tokens=8192,
+                                                reasoning_effort="none",
+                                            )
+                                            if (
+                                                rewrite_resp.content
+                                                and len(rewrite_resp.content) > 100
+                                            ):
+                                                content_md = rewrite_resp.content
+                                                logger.info(
+                                                    "v10-P0-7: 接口级生成章节 %s 幻觉重写成功",
+                                                    chapter_idx,
+                                                )
+                                            else:
+                                                content_md = self._strip_hallucinated_symbols(
+                                                    content_md, hall_syms
+                                                )
+                            except Exception as e:  # noqa: BLE001
+                                logger.warning(
+                                    "v10-P0-7: 接口级生成章节 %s 幻觉校验异常: %s",
+                                    chapter_idx, e,
+                                )
                         span.update(
                             output={
                                 "content_length": len(content_md),
                                 "image_count": 0,
                                 "v8_p0_g_triggered": True,
+                                "api_endpoint_card_mode": card_mode,
                             }
                         )
                         return {
@@ -489,16 +557,17 @@ class ContentFillerD:
 
             # 2. 加载提示词模板
             prompt_template = self._load_prompt_template()
-            code_summary = (
-                code_learning.get("summary", "") if isinstance(code_learning, dict) else ""
-            )
+            # TOK-D1: 章级事实切片, 禁止每章注入全量 50k summary / endpoints
+            sliced = self.slice_facts_for_chapter(chapter, code_learning, report_type)
+            code_summary = sliced.get("code_summary", "")
             # P0-4: 注入 key_modules (含 path) + dependencies (含 evidence), 让 LLM 拿到真实路径
-            key_modules_text = self._format_key_modules(
-                code_learning.get("key_modules", []) if isinstance(code_learning, dict) else []
-            )
-            dependencies_text = self._format_dependencies(
-                code_learning.get("dependencies", []) if isinstance(code_learning, dict) else []
-            )
+            key_modules_text = sliced.get("key_modules_text", "")
+            dependencies_text = sliced.get("dependencies_text", "")
+            endpoints_text = sliced.get("endpoints_text", "")
+            enums_text = sliced.get("enums_text", "")
+            config_specs_text = sliced.get("config_specs_text", "")
+            project_metadata_text = sliced.get("project_metadata_text", "")
+            glossary_text = sliced.get("glossary_text", "")
 
             # v5-P0-C: RAG 空结果降级 — 注入 code_learning 结构化上下文, 避免 LLM 无上下文编造
             if "[GROUNDING_EMPTY]" in rag_context:
@@ -515,10 +584,10 @@ class ContentFillerD:
                 rag_context = (
                     "[RAG_EMPTY_FALLBACK] RAG 检索无结果, 以下为 code_learning 结构化摘要, "
                     "请基于此生成内容, 禁止编造未在下文出现的类名/函数名/路径.\n\n"
-                    f"## 代码摘要\n{code_summary[:8000]}\n\n"
+                    f"## 代码摘要\n{code_summary[:6000]}\n\n"
                     f"## 关键模块\n{key_modules_text}\n\n"
                     f"## 依赖关系\n{dependencies_text}\n\n"
-                    f"## 仓库符号地图 (tree-sitter)\n{repo_map_text[:5000]}"
+                    f"## 仓库符号地图 (tree-sitter)\n{str(repo_map_text)[:3000]}"
                 )
 
             # 3. 构造 prompt
@@ -528,18 +597,18 @@ class ContentFillerD:
                 chapter_purpose=chapter.get("purpose", ""),
                 chapter_sections=chapter.get("sections", []),
                 key_points=chapter.get("key_points", []),
-                chapter_example=chapter.get("example", ""),
+                chapter_example=(str(chapter.get("example", "") or "")[:1500]),
                 language=language,
-                code_summary=code_summary[:50_000],  # 截断防止超长
+                code_summary=code_summary,
                 key_modules=key_modules_text,
                 dependencies=dependencies_text,
                 rag_context=rag_context,
-                # v9 新增 kwargs (从 code_learning 提取 v8 上下文)
-                endpoints_text=self._safe_get_str(code_learning, "endpoints_text")[:12_000],
-                enums_text=self._safe_get_str(code_learning, "enums_text")[:8_000],
-                config_specs_text=self._safe_get_str(code_learning, "config_specs_text")[:4_000],
-                project_metadata_text=self._safe_get_str(code_learning, "project_metadata_text")[:4_000],
-                glossary_text=self._safe_get_str(code_learning, "glossary_text")[:8_000],
+                # v9 新增 kwargs (从章级切片提取)
+                endpoints_text=endpoints_text,
+                enums_text=enums_text,
+                config_specs_text=config_specs_text,
+                project_metadata_text=project_metadata_text,
+                glossary_text=glossary_text,
             )
 
             # 4. P0-6: SMART LLM 填充内容 (含重试 + FAST 降级)
@@ -554,15 +623,15 @@ class ContentFillerD:
                 max_tokens=8192,
             )
 
-            # v8-P1-J: 两阶段 draft→refine (借鉴 RepoCoder)
-            # 第 1 阶段: 已通过 _generate_with_retry 生成 content_md (草稿)
-            # 第 2 阶段: 用草稿中的符号做二次检索, 修正草稿中的幻觉 errorCode/字段名
-            # 触发条件: code_learning 含 http_endpoints 或 enum_definitions (幻觉高发场景)
-            # 失败降级: 任何异常返回原草稿, 不阻断主流程
-            # 注意: 仅在整章节生成场景触发 (v8-P0-G 接口级生成已直接返回, 不会走到这里)
+            # v8-P1-J: 两阶段 draft→refine (默认关闭; settings.content_refine_enabled=True 才开)
+            # 实证: refine 与主填章同量级墙钟/token, 默认跳过 (PERF-D3 / TOK-D4)
             try:
+                refine_enabled = bool(
+                    getattr(settings or self.settings, "content_refine_enabled", False)
+                )
                 if (
-                    isinstance(code_learning, dict)
+                    refine_enabled
+                    and isinstance(code_learning, dict)
                     and (
                         code_learning.get("http_endpoints")
                         or code_learning.get("enum_definitions")
@@ -580,6 +649,8 @@ class ContentFillerD:
                         llm_session_id=llm_session_id,
                         settings=settings,
                     )
+                elif not refine_enabled:
+                    span.update(metadata={"refine_skipped_reason": "content_refine_disabled"})
             except Exception as e:  # noqa: BLE001
                 logger.warning("v8-P1-J: refine 异常 (降级使用原草稿): %s", e)
 
@@ -595,9 +666,9 @@ class ContentFillerD:
                     "chapter_purpose": chapter.get("purpose", ""),
                     "chapter_sections": chapter.get("sections", []),
                     "key_points": chapter.get("key_points", []),
-                    "chapter_example": chapter.get("example", ""),
+                    "chapter_example": (str(chapter.get("example", "") or "")[:1500]),
                     "language": language,
-                    "code_summary": code_summary[:50_000],
+                    "code_summary": code_summary,
                     "key_modules": key_modules_text,
                     "dependencies": dependencies_text,
                     "rag_context": rag_context,
@@ -621,57 +692,90 @@ class ContentFillerD:
                     symbol_result = symbol_validator.validate_document(content_md)
                     if not symbol_result["valid"]:
                         hallucinated_syms = symbol_result["hallucinated_symbols"]
-                        logger.warning(
-                            "v10-P0-7: 章节 %s 检测到 %d 个幻觉符号, 触发重写: %s",
-                            chapter_idx,
-                            len(hallucinated_syms),
-                            hallucinated_syms[:10],
-                        )
-                        span.update(
-                            metadata={
-                                "symbol_hallucinations": len(hallucinated_syms),
-                                "sample_hallucinated": hallucinated_syms[:10],
-                                "v10_hallucination_rewrite_triggered": True,
-                            }
-                        )
-                        # v10-P0-7: 触发 LLM 重写, 而非仅记录
-                        try:
-                            rewrite_prompt = self._build_hallucination_rewrite_prompt(
-                                original_content=content_md,
-                                hallucinated_symbols=hallucinated_syms,
-                                chapter=chapter,
-                                code_learning=code_learning,
+                        min_syms = int(
+                            getattr(
+                                settings or self.settings,
+                                "hallucination_rewrite_min_symbols",
+                                5,
                             )
-                            rewrite_response = await self.llm.achat(
-                                [{"role": "user", "content": rewrite_prompt}],
-                                tier=LLMTier.SMART,
-                                session_id=llm_session_id,
-                                span_name=f"docbot.content_fill.hallucination_rewrite.{chapter_idx}",
-                                max_tokens=8192,
-                                reasoning_effort="none",
+                            or 5
+                        )
+                        # 质量折中: 低于阈值仅记录、不 strip (误报会毁掉真实符号并泄漏占位符)
+                        # 达到阈值才 LLM 重写; 重写失败再静默 strip
+                        if len(hallucinated_syms) < min_syms:
+                            logger.info(
+                                "PERF-D3: 章节 %s 幻觉符号 %d < 阈值 %d, "
+                                "跳过 strip/LLM 重写 (仅记录)",
+                                chapter_idx,
+                                len(hallucinated_syms),
+                                min_syms,
                             )
-                            if rewrite_response.content and len(rewrite_response.content) > 100:
-                                content_md = rewrite_response.content
-                                logger.info(
-                                    "v10-P0-7: 章节 %s 幻觉重写成功, 新长度=%d",
-                                    chapter_idx, len(content_md),
-                                )
-                                span.update(
-                                    metadata={
-                                        "v10_hallucination_rewrite_success": True,
-                                        "v10_new_content_length": len(content_md),
-                                    }
-                                )
-                            else:
-                                logger.warning(
-                                    "v10-P0-7: 章节 %s 幻觉重写返回空, 保留原文",
-                                    chapter_idx,
-                                )
-                        except Exception as e:  # noqa: BLE001
+                            span.update(
+                                metadata={
+                                    "symbol_hallucinations": len(hallucinated_syms),
+                                    "sample_hallucinated": hallucinated_syms[:10],
+                                    "skipped_reason": "below_rewrite_threshold",
+                                    "v10_hallucination_rewrite_triggered": False,
+                                }
+                            )
+                        else:
                             logger.warning(
-                                "v10-P0-7: 章节 %s 幻觉重写失败 (保留原文): %s",
-                                chapter_idx, e,
+                                "v10-P0-7: 章节 %s 检测到 %d 个幻觉符号, 触发重写: %s",
+                                chapter_idx,
+                                len(hallucinated_syms),
+                                hallucinated_syms[:10],
                             )
+                            span.update(
+                                metadata={
+                                    "symbol_hallucinations": len(hallucinated_syms),
+                                    "sample_hallucinated": hallucinated_syms[:10],
+                                    "v10_hallucination_rewrite_triggered": True,
+                                }
+                            )
+                            # v10-P0-7: 触发局部 LLM 重写 (短上下文, 禁止全量 facts)
+                            try:
+                                rewrite_prompt = self._build_hallucination_rewrite_prompt(
+                                    original_content=content_md,
+                                    hallucinated_symbols=hallucinated_syms,
+                                    chapter=chapter,
+                                    code_learning=code_learning,
+                                )
+                                rewrite_response = await self.llm.achat(
+                                    [{"role": "user", "content": rewrite_prompt}],
+                                    tier=LLMTier.FAST,
+                                    session_id=llm_session_id,
+                                    span_name=f"docbot.content_fill.hallucination_rewrite.{chapter_idx}",
+                                    max_tokens=4096,
+                                    reasoning_effort="none",
+                                )
+                                if rewrite_response.content and len(rewrite_response.content) > 100:
+                                    content_md = rewrite_response.content
+                                    logger.info(
+                                        "v10-P0-7: 章节 %s 幻觉重写成功, 新长度=%d",
+                                        chapter_idx, len(content_md),
+                                    )
+                                    span.update(
+                                        metadata={
+                                            "v10_hallucination_rewrite_success": True,
+                                            "v10_new_content_length": len(content_md),
+                                        }
+                                    )
+                                else:
+                                    logger.warning(
+                                        "v10-P0-7: 章节 %s 幻觉重写返回空, 静默 strip",
+                                        chapter_idx,
+                                    )
+                                    content_md = self._strip_hallucinated_symbols(
+                                        content_md, hallucinated_syms
+                                    )
+                            except Exception as e:  # noqa: BLE001
+                                logger.warning(
+                                    "v10-P0-7: 章节 %s 幻觉重写失败 (静默 strip): %s",
+                                    chapter_idx, e,
+                                )
+                                content_md = self._strip_hallucinated_symbols(
+                                    content_md, hallucinated_syms
+                                )
                     else:
                         logger.info(
                             "O4-P0-B: 章节 %s 符号白名单校验通过 (matched=%d)",
@@ -1111,7 +1215,7 @@ class ContentFillerD:
 
     @staticmethod
     def _strip_invalid_citations(content: str, invalid_paths: list[str]) -> str:
-        """从 content 中移除幻觉引用 (替换为 [已移除幻觉引用] 标记)."""
+        """从 content 中静默移除幻觉引用 (不留调试占位符, 避免泄漏到用户文档)."""
         if not content or not invalid_paths:
             return content
         result = content
@@ -1119,12 +1223,9 @@ class ContentFillerD:
             if not path:
                 continue
             # 匹配 [path] / [path:Lxx] / [path:Lxx-Lyy]
-            import re
-
-            # 转义路径中的特殊字符
             escaped = re.escape(path)
             pattern = re.compile(rf"\[{escaped}(?::L?\d+(?:\s*-\s*L?\d+)?)?\]")
-            result = pattern.sub("[已移除幻觉引用]", result)
+            result = pattern.sub("", result)
         return result
 
     def _build_hallucination_rewrite_prompt(
@@ -1159,41 +1260,194 @@ class ContentFillerD:
         if len(hallucinated_symbols) > 50:
             hall_list += f"\n... (共 {len(hallucinated_symbols)} 个, 仅显示前 50)"
 
-        return f"""你是技术文档校对专家, 上一轮生成的文档中检测到以下幻觉符号/路径, 需要重写.
+        # TOK-D4: 只送问题段落 + 精简证据, 禁止再附全量 facts / 整章 30k
+        problem_excerpt = original_content
+        if len(original_content) > 8_000:
+            hits: list[str] = []
+            for sym in hallucinated_symbols[:20]:
+                idx = original_content.find(str(sym))
+                if idx >= 0:
+                    start = max(0, idx - 200)
+                    end = min(len(original_content), idx + 200)
+                    hits.append(original_content[start:end])
+            problem_excerpt = (
+                "\n...\n".join(hits[:8]) if hits else original_content[:8_000]
+            )
+
+        return f"""你是技术文档校对专家, 上一轮生成的文档中检测到以下幻觉符号/路径, 需要局部修正.
 
 # 章节标题
 {chapter_title}
 
-# 原文档 (含幻觉符号, 需要修正)
-{original_content[:30000]}
+# 问题段落 (含幻觉符号, 需要修正; 非全文)
+{problem_excerpt[:8000]}
 
 # 检测到的幻觉符号 (必须删除或替换为真实符号)
 {hall_list}
 
-# 真实符号清单 (从代码 AST 提取, 必须只使用此清单中的符号)
-## 项目元数据 (品牌名/域名, 禁止翻译)
-{project_metadata_text[:5000]}
+# 真实符号清单 (精简证据, 必须只使用此清单中的符号)
+## 项目元数据
+{project_metadata_text[:1500]}
 
-## 术语词典 (类名/方法名/枚举常量/文件路径, 禁止翻译)
-{glossary_text[:15000]}
+## 术语词典 (节选)
+{glossary_text[:4000]}
 
-## HTTP 端点全集 (API 路径必须来自此清单)
-{endpoints_text[:10000]}
+## 端点 (节选)
+{endpoints_text[:3000]}
 
-## 枚举定义全集 (errorCode 必须来自此清单)
-{enums_text[:8000]}
+## 枚举 (节选)
+{enums_text[:2000]}
 
-# 重写要求
-1. 删除所有幻觉符号, 替换为真实符号 (从上方清单选取)
-2. 删除虚构的 API 路径, 仅保留 endpoints_text 中真实存在的路径
-3. 删除与本章无关的内容 (如 docbot 自身路径 /memory/projects/... 等)
-4. 保留原文档结构和正确内容, 仅修正幻觉部分
-5. 路径格式必须使用相对仓库根的 POSIX 风格 (如 API/Controllers/XxxController.cs:42)
-6. 输出完整的 Markdown 章节 (非 diff), 不要任何前后说明
-
-# 输出格式
-直接输出重写后的 Markdown 内容, 不要任何前后说明.
+# 输出要求
+1. 输出完整修正后的章节 Markdown
+2. 禁止引入清单外的类名/函数名/路径
+3. 不要输出解释文字, 只输出文档正文
 """
+
+    @staticmethod
+    def _strip_hallucinated_symbols(content: str, symbols: list[str]) -> str:
+        """静默移除幻觉符号 (不写入「已移除幻觉符号」等用户可见占位符)."""
+        if not content or not symbols:
+            return content
+
+        result = content
+        for sym in symbols[:80]:
+            s = str(sym or "").strip()
+            if not s or len(s) < 2:
+                continue
+            # 反引号包裹 → 空; 裸标识符仅整词替换, 避免半截破坏
+            result = re.sub(rf"`{re.escape(s)}`", "``", result)
+            result = re.sub(rf"(?<![A-Za-z0-9_]){re.escape(s)}(?![A-Za-z0-9_])", "", result)
+        return result
+
+    def slice_facts_for_chapter(
+        self,
+        chapter: dict,
+        code_learning: dict | None,
+        report_type: str,
+    ) -> dict[str, str]:
+        """TOK-D1: 按章节标题/要点切片事实, 大幅压缩填章 prompt.
+
+        - 非 API 章: endpoints 清空或 Top-N 相关
+        - glossary/enums: 标题/key_points 命中子集
+        - code_summary: 3–6k 章相关摘录, 禁止每章 50k 整段
+        """
+        cl = code_learning if isinstance(code_learning, dict) else {}
+        title = str(chapter.get("title") or "")
+        purpose = str(chapter.get("purpose") or "")
+        key_points = chapter.get("key_points") or []
+        sections = chapter.get("sections") or []
+        query_blob = " ".join(
+            [title, purpose]
+            + [str(x) for x in key_points]
+            + [str(x) for x in sections]
+        ).lower()
+        tokens = {t for t in query_blob.replace("/", " ").replace(".", " ").split() if len(t) >= 2}
+
+        summary = str(cl.get("summary") or "")
+        # 章相关摘要: 按行命中关键词, 否则取头尾
+        summary_lines = summary.splitlines()
+        hit_lines = [
+            ln for ln in summary_lines
+            if any(tok in ln.lower() for tok in tokens)
+        ]
+        if hit_lines:
+            code_summary = "\n".join(hit_lines)[:4000]
+        else:
+            code_summary = (
+                summary[:3000]
+                + ("\n...\n" + summary[-1000:] if len(summary) > 4000 else "")
+            )[:4000]
+
+        key_modules_text = self._format_key_modules(cl.get("key_modules", []) or [])
+        # 模块也按标题相关裁剪 (TOK-D1b)
+        if len(key_modules_text) > 2500:
+            km_lines = key_modules_text.splitlines()
+            km_hit = [ln for ln in km_lines if any(tok in ln.lower() for tok in tokens)]
+            key_modules_text = "\n".join(km_hit or km_lines[:30])[:2500]
+
+        dependencies_text = self._format_dependencies(cl.get("dependencies", []) or [])[:2000]
+
+        is_api_ish = (
+            report_type == "api_doc"
+            or self._is_api_list_chapter(chapter)
+            or self._is_api_detail_chapter(chapter)
+            or any(k in query_blob for k in ("api", "接口", "endpoint", "路由", "controller"))
+        )
+        raw_eps = cl.get("http_endpoints") or []
+        if is_api_ish and isinstance(raw_eps, list) and raw_eps:
+            filtered = self._filter_endpoints_for_chapter(raw_eps, chapter)
+            if not filtered and self._is_api_list_chapter(chapter):
+                filtered = list(raw_eps)[:40]
+            try:
+                from src.skills.docbot.ast_search import format_endpoints_for_prompt
+
+                endpoints_text = format_endpoints_for_prompt(filtered)[:4000]
+            except Exception:  # noqa: BLE001
+                endpoints_text = self._safe_get_str(cl, "endpoints_text")[:3000]
+        else:
+            endpoints_text = ""
+
+        glossary_text = self._safe_get_str(cl, "glossary_text")
+        if glossary_text and tokens:
+            g_lines = glossary_text.splitlines()
+            g_hit = [ln for ln in g_lines if any(tok in ln.lower() for tok in tokens)]
+            glossary_text = "\n".join(g_hit or g_lines[:40])[:2500]
+        else:
+            glossary_text = glossary_text[:2000]
+
+        enums_text = self._safe_get_str(cl, "enums_text")
+        if enums_text and tokens:
+            e_lines = enums_text.splitlines()
+            e_hit = [ln for ln in e_lines if any(tok in ln.lower() for tok in tokens)]
+            enums_text = "\n".join(e_hit or e_lines[:30])[:2000]
+        else:
+            enums_text = enums_text[:1500] if is_api_ish else ""
+
+        return {
+            "code_summary": code_summary,
+            "key_modules_text": key_modules_text,
+            "dependencies_text": dependencies_text,
+            "endpoints_text": endpoints_text,
+            "enums_text": enums_text,
+            "config_specs_text": self._safe_get_str(cl, "config_specs_text")[:1200],
+            "project_metadata_text": self._safe_get_str(cl, "project_metadata_text")[:1200],
+            "glossary_text": glossary_text,
+        }
+
+    def _render_deterministic_api_list(
+        self, chapter: dict, code_learning: dict
+    ) -> str:
+        """TOK-D5: 概览/清单章用 AST 端点直接渲染 Markdown 表, 零 LLM."""
+        raw_eps = code_learning.get("http_endpoints") or []
+        if not isinstance(raw_eps, list) or not raw_eps:
+            return ""
+        filtered = self._filter_endpoints_for_chapter(raw_eps, chapter)
+        if not filtered:
+            filtered = list(raw_eps)
+        title = str(chapter.get("title") or "API 接口清单")
+        lines = [
+            f"## {title}",
+            "",
+            f"本章共 {len(filtered)} 个 HTTP 端点 (由源码 AST 确定性提取, 未经 LLM 改写)。",
+            "",
+            "| # | Method | Route | Handler | Class |",
+            "|---|--------|-------|---------|-------|",
+        ]
+        for i, ep in enumerate(filtered, 1):
+            if not isinstance(ep, dict):
+                continue
+            lines.append(
+                "| {i} | {method} | `{route}` | {handler} | {cls} |".format(
+                    i=i,
+                    method=ep.get("http_method") or "",
+                    route=ep.get("route") or "",
+                    handler=ep.get("method_name") or "",
+                    cls=ep.get("class_name") or "",
+                )
+            )
+        lines.append("")
+        return "\n".join(lines)
 
     @staticmethod
     def _safe_get_str(code_learning: dict | str, key: str, default: str = "") -> str:
@@ -1818,12 +2072,10 @@ class ContentFillerD:
         llm_session_id: str,
         settings: Any | None = None,
     ) -> str:
-        """v8-P0-G: 按 HTTP 端点逐个生成 API 文档卡片, 拼接为章节内容.
+        """v8-P0-G / TOK-EP1: 按 HTTP 端点生成 API 文档卡片.
 
-        每个 HTTP 端点调用一次 API_ENDPOINT_CARD_PROMPT, 生成一个接口卡片,
-        然后拼接所有卡片为完整的章节 Markdown.
-
-        失败降级: 若端点列表为空或生成失败, 返回空字符串, 由调用方降级到整章节生成.
+        默认 api_endpoint_card_mode=deterministic: AST 确定性卡片, 零 LLM.
+        模式 llm: 逐端点 SMART (历史路径, 实证 53×≈28.8k prompt).
         """
         if not isinstance(code_learning, dict):
             return ""
@@ -1839,36 +2091,83 @@ class ContentFillerD:
             logger.warning("v12-P0-5: 章节过滤后端点为空, 降级整章节生成")
             return ""
 
+        card_mode = str(
+            getattr(settings or self.settings, "api_endpoint_card_mode", "deterministic")
+            or "deterministic"
+        ).lower()
+        chapter_title = chapter.get("title", "API 详情")
+        enums_text = str(code_learning.get("enums_text", "") or "")
+
+        if card_mode != "llm":
+            # TOK-EP1 / PERF-EP1: 确定性 AST 卡片
+            glossary_text = str(code_learning.get("glossary_text", "") or "")
+            parts: list[str] = [
+                f"## {chapter_title}\n",
+                f"本章共覆盖 {len(http_endpoints)} 个 HTTP 端点"
+                f" (AST 确定性卡片, 未经 LLM 改写).\n",
+            ]
+            for i, ep in enumerate(http_endpoints):
+                if not isinstance(ep, dict):
+                    continue
+                parts.append(
+                    self._render_deterministic_endpoint_card(
+                        endpoint=ep,
+                        idx=i + 1,
+                        enums_text=enums_text,
+                        glossary_text=glossary_text,
+                        language=language,
+                    )
+                )
+            logger.info(
+                "TOK-EP1: 确定性生成 %d 个 API 接口卡片 (mode=%s)",
+                len(http_endpoints),
+                card_mode,
+            )
+            return "\n\n".join(parts)
+
         try:
             from src.config.docbot.prompts import API_ENDPOINT_CARD_PROMPT  # noqa: F401
         except Exception as e:  # noqa: BLE001
             logger.warning("v8-P0-G: 加载 API_ENDPOINT_CARD_PROMPT 失败: %s", e)
             return ""
 
-        # 提取 prompt 注入字段 (失败降级空字符串)
-        project_metadata_text = code_learning.get("project_metadata_text", "") or ""
-        glossary_text = code_learning.get("glossary_text", "") or ""
-        config_specs_text = code_learning.get("config_specs_text", "") or ""
-        enums_text = code_learning.get("enums_text", "") or ""
+        # LLM 模式: TOK-EP1b 切片共享上下文, 禁止每卡注入全量
+        project_metadata_text = (code_learning.get("project_metadata_text", "") or "")[:800]
+        glossary_text = (code_learning.get("glossary_text", "") or "")
+        config_specs_text = (code_learning.get("config_specs_text", "") or "")[:800]
 
-        # 章节标题和引导
-        chapter_title = chapter.get("title", "API 详情")
-        parts: list[str] = [f"## {chapter_title}\n"]
-        parts.append(f"本章共覆盖 {len(http_endpoints)} 个 HTTP 端点, 每个端点一个接口卡片.\n")
+        parts = [
+            f"## {chapter_title}\n",
+            f"本章共覆盖 {len(http_endpoints)} 个 HTTP 端点, 每个端点一个接口卡片.\n",
+        ]
 
-        # 逐个端点生成卡片 (并发控制: 最多 5 个并发, 与 MAX_LLM_CONCURRENCY 对齐)
-        semaphore = asyncio.Semaphore(5)
+        max_conc = int(
+            getattr(settings or self.settings, "max_llm_concurrency", 5) or 5
+        )
+        semaphore = asyncio.Semaphore(max(1, min(max_conc, 5)))
 
         async def _gen_one(endpoint: dict, idx: int) -> str:
             async with semaphore:
+                # 按端点关键字切片 glossary/enums
+                ep_tokens = {
+                    t.lower()
+                    for t in (
+                        str(endpoint.get("class_name") or ""),
+                        str(endpoint.get("method_name") or ""),
+                        str(endpoint.get("route") or ""),
+                    )
+                    if t
+                }
+                g_sliced = self._slice_text_by_tokens(glossary_text, ep_tokens, 1500)
+                e_sliced = self._slice_text_by_tokens(enums_text, ep_tokens, 1500)
                 return await self._generate_single_endpoint_card(
                     endpoint=endpoint,
                     idx=idx,
                     language=language,
                     project_metadata_text=project_metadata_text,
-                    glossary_text=glossary_text,
+                    glossary_text=g_sliced,
                     config_specs_text=config_specs_text,
-                    enums_text=enums_text,
+                    enums_text=e_sliced,
                     llm_session_id=llm_session_id,
                 )
 
@@ -1878,18 +2177,209 @@ class ContentFillerD:
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 logger.warning("v8-P0-G: 端点 %d 生成失败: %s", i + 1, result)
-                # 失败时, 至少输出端点的基本信息 (从 AST 提取的字段)
                 ep = http_endpoints[i]
                 parts.append(
-                    f"### API-{i+1:03d} {ep.get('method_name', '')} "
-                    f"({ep.get('http_method', '')} {ep.get('route', '')})\n"
-                    f"(生成失败, 仅展示 AST 提取信息)\n"
+                    self._render_deterministic_endpoint_card(
+                        endpoint=ep if isinstance(ep, dict) else {},
+                        idx=i + 1,
+                        enums_text=enums_text,
+                        glossary_text=glossary_text[:2000],
+                        language=language,
+                    )
                 )
             else:
                 parts.append(result)
 
-        logger.info("v8-P0-G: 生成 %d 个 API 接口卡片", len(http_endpoints))
+        logger.info("v8-P0-G: 生成 %d 个 API 接口卡片 (mode=llm)", len(http_endpoints))
         return "\n\n".join(parts)
+
+    @staticmethod
+    def _slice_text_by_tokens(text: str, tokens: set[str], limit: int) -> str:
+        """按 token 命中切片文本; 无命中则取前 limit 字符."""
+        if not text:
+            return ""
+        if not tokens:
+            return text[:limit]
+        lines = text.splitlines()
+        hit = [
+            ln
+            for ln in lines
+            if any(tok in ln.lower() for tok in tokens if len(tok) >= 2)
+        ]
+        return "\n".join(hit or lines[:40])[:limit]
+
+    def _render_deterministic_endpoint_card(
+        self,
+        endpoint: dict,
+        idx: int,
+        enums_text: str,
+        language: str,
+        glossary_text: str = "",
+    ) -> str:
+        """TOK-EP1: 从 AST 端点字段确定性渲染接口卡片 (零 LLM)."""
+        import re as _re
+
+        method = str(endpoint.get("http_method") or "").upper() or "GET"
+        route = str(endpoint.get("route") or "")
+        handler = str(endpoint.get("method_name") or "")
+        cls = str(endpoint.get("class_name") or "")
+        file_path = str(endpoint.get("file_path") or "")
+        line_no = endpoint.get("line")
+        summary = str(endpoint.get("summary") or "").strip()
+        name = handler or f"Endpoint-{idx}"
+        loc = f"{file_path}:{line_no}" if file_path and line_no else (file_path or "-")
+
+        # 路径参数: /api/foo/{id}/bar → id
+        path_params = _re.findall(r"\{([^}]+)\}", route)
+        # 相关错误码 / 术语
+        ep_tokens = {
+            t.lower()
+            for t in (
+                cls,
+                handler,
+                route.replace("/", " ").replace("{", " ").replace("}", " "),
+            )
+            if t
+        }
+        related_enums = self._slice_text_by_tokens(enums_text, ep_tokens, 1800)
+        related_gloss = self._slice_text_by_tokens(glossary_text, ep_tokens, 1200)
+        enum_rows = []
+        for ln in related_enums.splitlines()[:15]:
+            ln = ln.strip().lstrip("-").strip()
+            if not ln:
+                continue
+            enum_rows.append(f"| `{ln[:100]}` | — | 来自 AST 枚举清单 |")
+
+        desc = summary or (
+            f"{cls}.{handler}" if cls and handler else (handler or route)
+        )
+        is_en = bool(language and language.lower().startswith("en"))
+        if is_en:
+            auth_label, desc_label, req_label, resp_label, err_label = (
+                "Auth",
+                "Description",
+                "Request parameters",
+                "Response",
+                "Error codes",
+            )
+            src_note = "See source signature; fields from AST when available."
+            ex_req, ex_resp = "Request example", "Response example"
+        else:
+            auth_label, desc_label, req_label, resp_label, err_label = (
+                "鉴权",
+                "描述",
+                "请求参数",
+                "响应格式",
+                "错误码",
+            )
+            src_note = "详见源码方法签名; 字段以 AST 可提取信息为准, 禁止编造 DTO."
+            ex_req, ex_resp = "请求示例", "响应示例"
+
+        # 鉴权启发: 类/方法名含 public/anonymous 或路径含 /public/ → 无鉴权
+        route_l = route.lower()
+        blob = f"{cls} {handler} {route}".lower()
+        if "/public/" in route_l or "anonymous" in blob or "allowanonymous" in blob:
+            auth_val = "无 (公开端点)" if not is_en else "None (public)"
+        else:
+            auth_val = (
+                "见源码注解 (`[Authorize]` / Bearer JWT / ApiKey); AST 未解析时默认需认证"
+                if not is_en
+                else "See source attributes (`[Authorize]` / Bearer / ApiKey)"
+            )
+
+        param_rows = []
+        for p in path_params:
+            param_rows.append(f"| `{p}` | path | 是 | 路径参数 (AST 从路由模板提取) |")
+        if method in ("POST", "PUT", "PATCH"):
+            param_rows.append(
+                f"| body | body | 视接口 | {src_note} |"
+            )
+        if not param_rows:
+            param_rows.append(f"| — | — | — | {src_note} |")
+
+        # 请求/响应示例: 仅占位, 不编造业务字段
+        ex_body = "{\n  " + ",\n  ".join(
+            f'"{p}": "<{p}>"' for p in (path_params or ["id"])[:4]
+        ) + "\n}"
+        if method in ("GET", "DELETE", "HEAD"):
+            ex_body = "(无 body; 参数见路径/Query)"
+
+        gloss_block = ""
+        if related_gloss.strip():
+            # 过滤 prompt 元信息头 (v8-P0-B / 强制规则 等), 禁止泄漏到用户文档
+            gloss_lines = []
+            for ln in related_gloss.splitlines():
+                s = ln.strip()
+                if not s or s.startswith("#"):
+                    continue
+                if "强制约束" in s or "强制规则" in s or "禁止翻译" in s:
+                    continue
+                if s.startswith("术语词典") or "v8-P0" in s or "v9-P0" in s:
+                    continue
+                gloss_lines.append(s)
+                if len(gloss_lines) >= 8:
+                    break
+            if gloss_lines:
+                gloss_block = (
+                    "\n**相关符号**\n\n"
+                    + "\n".join(f"- {g}" for g in gloss_lines)
+                    + "\n"
+                )
+
+        lines = [
+            f"### API-{idx:03d} {name} ({method} `{route}`)",
+            f"- **{auth_label}**: {auth_val}",
+            f"- **{desc_label}**: {desc}",
+            f"- **源码位置**: `{loc}`",
+            (
+                f"- **Handler**: `{cls}.{handler}`"
+                if cls
+                else f"- **Handler**: `{handler}`"
+            ),
+            f"- **HTTP**: `{method}`",
+            f"- **Route**: `{route}`",
+            "",
+            f"**{req_label}**",
+            "",
+            "| 字段 | 类型 | 必填 | 说明 |",
+            "|------|------|------|------|",
+            *param_rows,
+            "",
+            f"**{resp_label}**",
+            "",
+            "| 字段 | 类型 | 说明 |",
+            "|------|------|------|",
+            "| data | object | 业务载荷, 结构见源码返回类型 |",
+            "| success / code | bool/int | 视统一响应包装 |",
+            f"| message | string | {src_note} |",
+            "",
+            f"**{err_label}**",
+            "",
+            "| errorCode | message | 说明 |",
+            "|-----------|---------|------|",
+        ]
+        if enum_rows:
+            lines.extend(enum_rows)
+        else:
+            lines.append("| — | — | 本章无命中相关枚举行; 参见全局错误码章 |")
+        lines.extend(
+            [
+                "",
+                f"**{ex_req}**",
+                "",
+                "```json",
+                ex_body if isinstance(ex_body, str) else str(ex_body),
+                "```",
+                "",
+                f"**{ex_resp}**",
+                "",
+                "```json",
+                '{\n  "success": true,\n  "data": {},\n  "message": "ok"\n}',
+                "```",
+                gloss_block,
+            ]
+        )
+        return "\n".join(lines)
 
     async def _generate_single_endpoint_card(
         self,
@@ -2025,17 +2515,17 @@ class ContentFillerD:
             chapter_title = chapter.get("title", "")
 
             prompt = CONTENT_REFINE_PROMPT.format(
-                draft_content=draft_content[:50_000],
-                second_retrieval=second_retrieval,
+                draft_content=draft_content[:12_000],
+                second_retrieval=second_retrieval[:6_000],
                 chapter_title=chapter_title,
                 language=(
                     code_learning.get("language", "zh")
                     if isinstance(code_learning, dict)
                     else "zh"
                 ),
-                glossary_text=glossary_text,
-                enums_text=enums_text,
-                endpoints_text=endpoints_text,
+                glossary_text=glossary_text[:3000],
+                enums_text=enums_text[:2000],
+                endpoints_text=endpoints_text[:3000],
             )
 
             messages = [{"role": "user", "content": prompt}]

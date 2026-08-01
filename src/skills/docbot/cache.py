@@ -20,8 +20,18 @@ from src.observability.tracing import trace_chain
 logger = logging.getLogger(__name__)
 
 # 6 步流水线缓存类型全集 (type 字段允许值)
+# repo_facts / code_learning_shared: 多报告共享确定性事实与学习基线 (PERF-T0 / TOK-S0)
 CACHE_TYPES: frozenset[str] = frozenset(
-    {"code_learning", "outline", "content", "reviewed", "merged", "final"}
+    {
+        "code_learning",
+        "outline",
+        "content",
+        "reviewed",
+        "merged",
+        "final",
+        "repo_facts",
+        "code_learning_shared",
+    }
 )
 
 # 默认 TTL (24 小时), settings.docbot_cache_ttl 缺失时的兜底

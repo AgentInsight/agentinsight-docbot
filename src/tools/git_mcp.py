@@ -36,7 +36,7 @@ _repo_clone_locks_guard = asyncio.Lock()
 
 
 async def _get_repo_clone_lock(user_id: str, repo_id: str) -> asyncio.Lock:
-    """按 user_id:repo_id 获取克隆互斥锁."""
+    """按 user_id:repo_id 获取进程内克隆互斥锁."""
     key = f"{user_id}:{repo_id}"
     async with _repo_clone_locks_guard:
         lock = _repo_clone_locks.get(key)
@@ -44,6 +44,54 @@ async def _get_repo_clone_lock(user_id: str, repo_id: str) -> asyncio.Lock:
             lock = asyncio.Lock()
             _repo_clone_locks[key] = lock
         return lock
+
+
+class _CrossProcessRepoLock:
+    """跨进程文件锁 (PERF-R3): 防止多 worker/进程同目录 clone 竞态.
+
+    使用独占创建 .clone.lock; Windows/Unix 均通过 O_EXCL 轮询实现, 无额外依赖.
+    """
+
+    def __init__(self, lock_path: Path, *, timeout_s: float = 600.0, poll_s: float = 0.5) -> None:
+        self.lock_path = lock_path
+        self.timeout_s = timeout_s
+        self.poll_s = poll_s
+        self._fd: int | None = None
+
+    async def __aenter__(self) -> "_CrossProcessRepoLock":
+        self.lock_path.parent.mkdir(parents=True, exist_ok=True)
+        deadline = asyncio.get_event_loop().time() + self.timeout_s
+        while True:
+            try:
+                self._fd = await asyncio.to_thread(
+                    os.open,
+                    str(self.lock_path),
+                    os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                )
+                await asyncio.to_thread(os.write, self._fd, str(os.getpid()).encode())
+                return self
+            except FileExistsError:
+                if asyncio.get_event_loop().time() >= deadline:
+                    # 超时: 尝试清理陈旧锁后强制获取 (避免永久卡死)
+                    logger.warning("跨进程 clone 锁超时, 强制清理: %s", self.lock_path)
+                    try:
+                        await asyncio.to_thread(self.lock_path.unlink, missing_ok=True)
+                    except OSError:
+                        pass
+                    continue
+                await asyncio.sleep(self.poll_s)
+
+    async def __aexit__(self, *args: object) -> None:
+        if self._fd is not None:
+            try:
+                await asyncio.to_thread(os.close, self._fd)
+            except OSError:
+                pass
+            self._fd = None
+        try:
+            await asyncio.to_thread(self.lock_path.unlink, missing_ok=True)
+        except OSError:
+            pass
 
 
 # 跳过的目录 (枚举文件时排除)
@@ -197,6 +245,24 @@ class GitMCPAdapter:
                 pass
             raise TimeoutError(f"git 命令超时 ({timeout}s): {' '.join(args[:3])}") from None
 
+    async def _sanitize_worktree_for_pull(
+        self, target: Path, ssh_env: dict[str, str]
+    ) -> None:
+        """PERF-R3: pull 前清理 Agent 临时仓脏状态.
+
+        - 删除残留 .git/index.lock (并发 clone 常见)
+        - git reset --hard + clean -fd 丢弃未跟踪临时文件 (仅 temp/repos 下 Agent 仓)
+        """
+        index_lock = target / ".git" / "index.lock"
+        if index_lock.exists():
+            try:
+                await asyncio.to_thread(index_lock.unlink)
+                logger.info("已清理残留 index.lock: %s", index_lock)
+            except OSError as e:
+                logger.warning("清理 index.lock 失败: %s", e)
+        await self._run_git(["reset", "--hard", "HEAD"], cwd=target, env=ssh_env, timeout=60)
+        await self._run_git(["clean", "-fd"], cwd=target, env=ssh_env, timeout=60)
+
     def _check_repo_size(self, repo_path: Path) -> None:
         """校验已克隆仓库大小, 超出 max_repo_size_mb 抛 ValueError.
 
@@ -274,73 +340,104 @@ class GitMCPAdapter:
             ssh_key_path: str | None = None
             ssh_env: dict[str, str] = {}
             repo_lock = await _get_repo_clone_lock(user_id, repo_id)
+            # 跨进程锁文件放在父目录, 避免与仓库内 .git/index.lock 冲突
+            file_lock = _CrossProcessRepoLock(target.parent / f".{repo_id}.clone.lock")
 
             async with repo_lock:
-                try:
-                    if auth_type == "ssh_key":
-                        ssh_key = repo_config.get("ssh_key") or ""
-                        if ssh_key:
-                            ssh_key_path = self._write_ssh_key(
-                                ssh_key, repo_config.get("ssh_passphrase")
+                async with file_lock:
+                    try:
+                        if auth_type == "ssh_key":
+                            ssh_key = repo_config.get("ssh_key") or ""
+                            if ssh_key:
+                                ssh_key_path = self._write_ssh_key(
+                                    ssh_key, repo_config.get("ssh_passphrase")
+                                )
+                                ssh_env["GIT_SSH_COMMAND"] = self._build_ssh_command(ssh_key_path)
+
+                        branch = (repo_config.get("default_branch") or "").strip() or "main"
+
+                        # 已存在则显式 pull origin/<branch> (避免 bare `git pull` 多分支歧义)
+                        if target.exists() and (target / ".git").exists():
+                            logger.info("仓库已存在, 执行 git pull: %s (branch=%s)", target, branch)
+                            # PERF-R3: 清理 Agent 管理目录上的脏树/残留 index.lock, 再 pull
+                            await self._sanitize_worktree_for_pull(target, ssh_env)
+                            rc, _out, err = await self._run_git(
+                                ["pull", "--ff-only", "origin", branch],
+                                cwd=target,
+                                env=ssh_env,
+                                timeout=300,
                             )
-                            ssh_env["GIT_SSH_COMMAND"] = self._build_ssh_command(ssh_key_path)
+                            if rc != 0:
+                                # 非 ff: 尝试 fetch + reset --hard 到远端 (仅 Agent 临时仓)
+                                logger.warning(
+                                    "git pull --ff-only 失败, 尝试 reset 对齐远端: path=%s err=%s",
+                                    target,
+                                    (err or "")[:300],
+                                )
+                                await self._run_git(
+                                    ["fetch", "origin", branch],
+                                    cwd=target,
+                                    env=ssh_env,
+                                    timeout=300,
+                                )
+                                rc2, _, err2 = await self._run_git(
+                                    ["reset", "--hard", f"origin/{branch}"],
+                                    cwd=target,
+                                    env=ssh_env,
+                                    timeout=120,
+                                )
+                                if rc2 != 0:
+                                    logger.warning(
+                                        "git reset 失败, 复用已有本地仓库: path=%s err=%s",
+                                        target,
+                                        (err2 or "")[:300],
+                                    )
+                        else:
+                            # 不存在则 git clone; 清理残留目录 (防止半克隆状态)
+                            if target.exists():
+                                await asyncio.to_thread(shutil.rmtree, target, ignore_errors=True)
 
-                    branch = (repo_config.get("default_branch") or "").strip() or "main"
+                            clone_args = ["clone"]
+                            depth = int(repo_config.get("clone_depth") or 0)
+                            if depth > 0:
+                                clone_args += ["--depth", str(depth)]
+                            if branch:
+                                clone_args += ["--branch", branch]
+                            clone_args += [auth_url, str(target)]
 
-                    # 已存在则显式 pull origin/<branch> (避免 bare `git pull` 多分支歧义)
-                    if target.exists() and (target / ".git").exists():
-                        logger.info("仓库已存在, 执行 git pull: %s (branch=%s)", target, branch)
-                        rc, _out, err = await self._run_git(
-                            ["pull", "--ff-only", "origin", branch],
-                            cwd=target,
-                            env=ssh_env,
-                            timeout=300,
-                        )
-                        if rc != 0:
-                            # 并发/浅克隆/非 ff: 本地已有代码则复用, 不阻断学习流水线
-                            logger.warning(
-                                "git pull 失败, 复用已有本地仓库: path=%s err=%s",
-                                target,
-                                (err or "")[:300],
+                            rc, _out, err = await self._run_git(
+                                clone_args, env=ssh_env, timeout=600
                             )
-                    else:
-                        # 不存在则 git clone
-                        # 清理残留目录 (防止半克隆状态)
-                        if target.exists():
-                            await asyncio.to_thread(shutil.rmtree, target, ignore_errors=True)
+                            if rc != 0:
+                                # 并发竞态: 另一进程已克隆成功则复用
+                                if target.exists() and (target / ".git").exists():
+                                    logger.warning(
+                                        "git clone 失败但目标已存在可用仓库, 复用: %s err=%s",
+                                        target,
+                                        (err or "")[:300],
+                                    )
+                                else:
+                                    await asyncio.to_thread(
+                                        shutil.rmtree, target, ignore_errors=True
+                                    )
+                                    raise RuntimeError(f"git clone 失败: {err[:500]}")
 
-                        clone_args = ["clone"]
-                        depth = int(repo_config.get("clone_depth") or 0)
-                        if depth > 0:
-                            clone_args += ["--depth", str(depth)]
-                        if branch:
-                            clone_args += ["--branch", branch]
-                        clone_args += [auth_url, str(target)]
+                        # 校验仓库大小 (克隆后)
+                        self._check_repo_size(target)
 
-                        rc, _out, err = await self._run_git(
-                            clone_args, env=ssh_env, timeout=600
+                        span.update(
+                            output={"repo_path": str(target)},
+                            metadata={"tool_name": "git.clone", "success": True},
                         )
-                        if rc != 0:
-                            # 清理失败残留
-                            await asyncio.to_thread(shutil.rmtree, target, ignore_errors=True)
-                            raise RuntimeError(f"git clone 失败: {err[:500]}")
+                        return str(target)
 
-                    # 校验仓库大小 (克隆后)
-                    self._check_repo_size(target)
-
-                    span.update(
-                        output={"repo_path": str(target)},
-                        metadata={"tool_name": "git.clone", "success": True},
-                    )
-                    return str(target)
-
-                finally:
-                    # 清理临时 SSH key 文件
-                    if ssh_key_path:
-                        try:
-                            await asyncio.to_thread(os.remove, ssh_key_path)
-                        except OSError:
-                            pass
+                    finally:
+                        # 清理临时 SSH key 文件
+                        if ssh_key_path:
+                            try:
+                                await asyncio.to_thread(os.remove, ssh_key_path)
+                            except OSError:
+                                pass
 
     async def list_files(self, repo_path: str, pattern: str = "**/*") -> list[str]:
         """枚举文件, 跳过 .git/node_modules/__pycache__/dist/build/.venv/.next/target/."""

@@ -71,10 +71,19 @@ class TestBuildCacheKey:
             )
 
     def test_cache_types_contains_six_types(self) -> None:
-        """CACHE_TYPES 含 6 种类型 (code_learning/outline/content/reviewed/merged/final)."""
-        expected = {"code_learning", "outline", "content", "reviewed", "merged", "final"}
+        """CACHE_TYPES 含流水线类型 + 共享学习类型."""
+        expected = {
+            "code_learning",
+            "outline",
+            "content",
+            "reviewed",
+            "merged",
+            "final",
+            "repo_facts",
+            "code_learning_shared",
+        }
         assert set(CACHE_TYPES) == expected
-        assert len(CACHE_TYPES) == 6
+        assert len(CACHE_TYPES) == 8
 
     def test_chapter_idx_none_omitted(self) -> None:
         """chapter_idx=None 时, 键不附加 chapter_idx 部分."""

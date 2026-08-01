@@ -28,7 +28,8 @@ DOCBOT_URL = f"{DOCBOT_BASE.rstrip('/')}/v1/chat/completions"
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "docs" / "e2e-output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 OUT_SUFFIX = os.environ.get("DOCBOT_E2E_OUT_SUFFIX", "")
-REPORT_TYPES = ["requirements", "api_doc"]
+_REPORT_TYPES_ENV = os.environ.get("DOCBOT_E2E_REPORT_TYPES", "requirements,api_doc")
+REPORT_TYPES = [x.strip() for x in _REPORT_TYPES_ENV.split(",") if x.strip()]
 
 JWT_SIGNING_KEY = os.environ.get(
     "JWT_SIGNING_KEY", "E0A9619F3C314C12B1DADE3746B52518"

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
 
 from src.llm.client import LLMClient, LLMTier, get_llm_client
@@ -24,6 +25,26 @@ from src.observability.tracing import trace_chain
 from src.skills.docbot.cache import read_cache
 
 logger = logging.getLogger(__name__)
+
+# 用户可见文档中禁止出现的内部元信息 / 调试占位符
+_META_LEAK_LINE_RE = re.compile(
+    r"(?im)^[ \t]*(?:[-*][ \t]+)?(?:"
+    r"#?[ \t]*术语词典[^\n]*强制约束[^\n]*|"
+    r"#?[ \t]*强制规则[^\n]*|"
+    r"#?[ \t]*强制保留原文术语[^\n]*|"
+    r"#?[ \t]*v9-P0-C[^\n]*|"
+    r"#?[ \t]*v8-P0-B[^\n]*|"
+    r"\[内部约束-勿写入正文\][^\n]*|"
+    r".*已移除幻觉符号.*|"
+    r".*已移除幻觉引用.*"
+    r")[ \t]*$"
+)
+_META_LEAK_INLINE_RE = re.compile(
+    r"\[已移除幻觉符号\]|\[已移除幻觉引用\]|"
+    r"术语词典\s*\(v8-P0-B[^)]*\)|"
+    r"v8-P0-B\s*强制约束|"
+    r"\[内部约束-勿写入正文\]"
+)
 
 
 class FinalReviewerG:
@@ -287,6 +308,9 @@ class FinalReviewerG:
             except Exception as e:  # noqa: BLE001
                 logger.warning("v12-P0-7: 品牌名修正异常 (降级跳过): %s", e)
 
+            # 清除内部调试/约束元信息泄漏 (术语词典强制约束头、幻觉占位符等)
+            final_content_md = self._sanitize_user_visible_meta(final_content_md)
+
             return {
                 "title": title,
                 "summary": summary,
@@ -299,6 +323,29 @@ class FinalReviewerG:
                 "quality_check": quality_check,  # v7-P1-H: 质量检查结果
                 "v8_post_validation": v8_corrections,  # v8-P1-I: 后置校验记录
             }
+
+    @classmethod
+    def _sanitize_user_visible_meta(cls, content_md: str) -> str:
+        """清除泄漏到用户文档的内部约束头 / 幻觉占位符.
+
+        典型泄漏:
+        - `术语词典 (v8-P0-B 强制约束: ...)`
+        - `[已移除幻觉符号]` / `[已移除幻觉引用]`
+        - `[内部约束-勿写入正文]...`
+        """
+        if not content_md:
+            return content_md
+        before = len(content_md)
+        cleaned = _META_LEAK_LINE_RE.sub("", content_md)
+        cleaned = _META_LEAK_INLINE_RE.sub("", cleaned)
+        # 收敛多余空行
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        if len(cleaned) < before:
+            logger.info(
+                "终审清除用户可见元信息泄漏: 移除 %d 字符",
+                before - len(cleaned),
+            )
+        return cleaned
 
     @staticmethod
     def _build_sections_summary(content_md: str, max_per_section: int = 500) -> str:

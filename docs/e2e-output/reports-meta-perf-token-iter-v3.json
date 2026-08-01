@@ -1,0 +1,32 @@
+{
+  "session_id": "183a8df5-e1e4-4a43-a152-74256b89100d",
+  "elapsed_s": 702.0677456855774,
+  "reports": [
+    {
+      "report_id": "bc8ffd1f-437a-41ec-b40c-8542b5f21be2",
+      "report_type": "requirements",
+      "title": "AgentInsightService 产品需求文档（PRD）：AI Agent 可观测性与支付管理平台",
+      "summary": "本文档为 AgentInsightService 后端服务平台的产品需求文档，覆盖 AI Agent 可观测性（Trace、Observation、Score 数据采集、存储、查询与告警）及商业化支付管理（微信/支付宝集成、订单管理、组织特权更新）两大核心域。文档详细定义了用户认证、组织项目管理、可观测性查询、告警管理、支付管理、Agent 配置等 9 大功能模块的 30+ 项功能需求，24 项非功能需求（性能、安全、可用性等），以及内部服务接口与数据实体规范。同时明确了技术选型约束（.NET/Furion + Python/OpenAI 兼容）、P0-P3 优先级路线图、外部依赖风险（支付 API、存储层）及需求追踪矩阵，为开发、测试与运维提供完整依据。",
+      "download_urls": {
+        "markdown": "/v1/reports/bc8ffd1f-437a-41ec-b40c-8542b5f21be2/download?format=markdown",
+        "html": "/v1/reports/bc8ffd1f-437a-41ec-b40c-8542b5f21be2/download?format=html",
+        "pdf": "/v1/reports/bc8ffd1f-437a-41ec-b40c-8542b5f21be2/download?format=pdf",
+        "docx": "/v1/reports/bc8ffd1f-437a-41ec-b40c-8542b5f21be2/download?format=docx",
+        "json": "/v1/reports/bc8ffd1f-437a-41ec-b40c-8542b5f21be2/download?format=json"
+      }
+    },
+    {
+      "report_id": "7fb4817e-5a1e-4acc-80dc-ee6cd0f216da",
+      "report_type": "api_doc",
+      "title": "AgentInsightService API 参考文档",
+      "summary": "本文档为 AgentInsightService 公开 API 参考手册，涵盖 AI Agent 可观测性数据查询、告警管理、支付订阅、Agent 配置管理等核心能力。API 采用 RESTful 风格，路由前缀为 /api，共 76 个端点，分布在 18 个 Controller 中。认证支持 JWT Bearer Token 与 API Key Basic Auth 两种方式。文档详细描述了每个端点的请求参数、响应格式、鉴权要求及错误码，并提供了安全合规、限流配额等通用约定。",
+      "download_urls": {
+        "markdown": "/v1/reports/7fb4817e-5a1e-4acc-80dc-ee6cd0f216da/download?format=markdown",
+        "html": "/v1/reports/7fb4817e-5a1e-4acc-80dc-ee6cd0f216da/download?format=html",
+        "pdf": "/v1/reports/7fb4817e-5a1e-4acc-80dc-ee6cd0f216da/download?format=pdf",
+        "docx": "/v1/reports/7fb4817e-5a1e-4acc-80dc-ee6cd0f216da/download?format=docx",
+        "json": "/v1/reports/7fb4817e-5a1e-4acc-80dc-ee6cd0f216da/download?format=json"
+      }
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "session_id": "96e46a69-8e03-4dfe-87df-830bdc780a9d",
+  "elapsed_s": 589.1952064037323,
+  "reports": [
+    {
+      "report_id": "d086b85f-a8da-4eca-b9b8-3cf10733c912",
+      "report_type": "requirements",
+      "title": "AgentInsightService 产品需求文档（PRD）",
+      "summary": "本文档为 AgentInsightService 产品需求文档，定义企业级 AI Agent 可观测性与管理平台的功能与非功能需求。平台提供 LLM Trace 可观测性（基于 ClickHouse）和多 Agent 服务网关（OpenAI 兼容 API），并涵盖用户组织管理、支付集成、告警系统等企业级功能。文档基于代码仓库 AST 扫描生成，确保与实现一致，为设计、开发、测试、部署提供统一依据。",
+      "download_urls": {
+        "markdown": "/v1/reports/d086b85f-a8da-4eca-b9b8-3cf10733c912/download?format=markdown",
+        "html": "/v1/reports/d086b85f-a8da-4eca-b9b8-3cf10733c912/download?format=html",
+        "pdf": "/v1/reports/d086b85f-a8da-4eca-b9b8-3cf10733c912/download?format=pdf",
+        "docx": "/v1/reports/d086b85f-a8da-4eca-b9b8-3cf10733c912/download?format=docx",
+        "json": "/v1/reports/d086b85f-a8da-4eca-b9b8-3cf10733c912/download?format=json"
+      }
+    },
+    {
+      "report_id": "d3b03e00-c08a-46cd-976a-a457fafbf555",
+      "report_type": "api_doc",
+      "title": "AgentInsightService API 参考文档：认证、接口、错误码与集成指南",
+      "summary": "本文档为 AgentInsightService 提供全面的 API 参考，涵盖数据管理 API 与 Agent 服务 API 共 78 个 HTTP 端点。文档详细说明 JWT 与 API Key 认证机制、通用请求响应约定、错误码规范、限流配额及版本管理策略，并附有 SDK 示例与安全合规指引。所有接口定义均基于源码 AST 确定性提取，确保准确可靠。",
+      "download_urls": {
+        "markdown": "/v1/reports/d3b03e00-c08a-46cd-976a-a457fafbf555/download?format=markdown",
+        "html": "/v1/reports/d3b03e00-c08a-46cd-976a-a457fafbf555/download?format=html",
+        "pdf": "/v1/reports/d3b03e00-c08a-46cd-976a-a457fafbf555/download?format=pdf",
+        "docx": "/v1/reports/d3b03e00-c08a-46cd-976a-a457fafbf555/download?format=docx",
+        "json": "/v1/reports/d3b03e00-c08a-46cd-976a-a457fafbf555/download?format=json"
+      }
+    }
+  ]
+}

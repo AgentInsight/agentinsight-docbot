@@ -1,0 +1,64 @@
+{
+  "results": [
+    {
+      "session_id": "49c60a43-0891-41cf-945f-8662eca193d1",
+      "trace_id": "3999c3862dba963b378d61c8b6af8606",
+      "wall_ms": 0,
+      "wall_s": 0.0,
+      "total_tokens": 1042180,
+      "by_category": {
+        "review": {
+          "n": 38,
+          "p": 166023,
+          "c": 27832,
+          "t": 193855,
+          "d": 183401
+        },
+        "fill_extra": {
+          "n": 11,
+          "p": 0,
+          "c": 0,
+          "t": 0,
+          "d": 559
+        },
+        "fill": {
+          "n": 12,
+          "p": 654600,
+          "c": 39269,
+          "t": 693869,
+          "d": 297571
+        },
+        "code_learning": {
+          "n": 2,
+          "p": 76763,
+          "c": 7292,
+          "t": 84055,
+          "d": 62067
+        },
+        "outline": {
+          "n": 2,
+          "p": 56327,
+          "c": 14074,
+          "t": 70401,
+          "d": 149525
+        }
+      },
+      "outline_generation_count": 2,
+      "outline_gen_names": [
+        "docbot.outline_refine.api_doc",
+        "docbot.outline_refine.requirements"
+      ],
+      "generation_count": 65,
+      "chain_count": 261,
+      "has_outline_skip_chain_name": false
+    }
+  ],
+  "leak_scans": {
+    "quality-balance": {
+      "api_doc-quality-balance.md": [],
+      "requirements-quality-balance.md": []
+    },
+    "quality-balance-arch": {},
+    "quality-balance-repo2": {}
+  }
+}

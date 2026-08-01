@@ -149,6 +149,8 @@ async def c_code_learning_node(state: dict, settings: Any | None = None) -> dict
             report_type=report_type,
             llm_session_id=llm_session_id,
             settings=settings,
+            session_id=session_id,
+            agent_id=agent_id,
         )
     except Exception as e:
         logger.exception(
@@ -665,6 +667,182 @@ async def e_review_node(state: dict, settings: Any | None = None) -> dict:
     }
 
 
+async def d_content_fill_all_node(state: dict, settings: Any | None = None) -> dict:
+    """PERF-D1: 并行填充全部章节 (单节点替代 D 自环)."""
+    from src.agents.docbot.content_filler import ContentFillerD
+
+    agent_id = state.get("agent_id", "agentinsight-docbot")
+    user_id = state.get("user_id", "")
+    session_id = state.get("session_id", "")
+    report_type = state.get("report_type", "")
+    language = state.get("language", "zh")
+    repo_id = state.get("repo_id", "")
+    llm_session_id = state.get("llm_session_id", "")
+    chapters = state.get("chapters", []) or []
+
+    report_type_safe = report_type or "unknown"
+    async with trace_chain(
+        name=f"docbot.report.{report_type_safe}.content_fill_all",
+        input={"chapter_count": len(chapters)},
+    ) as span:
+        if not chapters:
+            span.update(metadata={"empty_chapters": True})
+            return {"content_cache_keys": [], "current_chapter_idx": 0}
+
+        code_learning: dict = {}
+        code_learning_cache_key = state.get("code_learning_cache_key", "")
+        if code_learning_cache_key:
+            raw = await read_cache(code_learning_cache_key, settings=settings)
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        code_learning = parsed
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.warning("code_learning_cache JSON 解析失败: %s", e)
+
+        file_index = code_learning.get("file_index") if isinstance(code_learning, dict) else None
+        max_concurrent = 5
+        if settings is not None:
+            max_concurrent = int(getattr(settings, "chapter_fill_max_concurrent", 5) or 5)
+
+        filler = ContentFillerD(settings)
+        results = await filler.fill_all_chapters_parallel(
+            chapters=chapters,
+            code_learning=code_learning,
+            report_type=report_type,
+            language=language,
+            repo_id=repo_id,
+            user_id=user_id,
+            llm_session_id=llm_session_id,
+            settings=settings,
+            file_index=file_index,
+            max_concurrent=max_concurrent,
+        )
+
+        content_keys: list[str] = []
+        for i, chapter_result in enumerate(results):
+            key = build_cache_key(
+                agent_id=agent_id,
+                user_id=user_id,
+                session_id=session_id,
+                type_="content",
+                report_type=report_type,
+                chapter_idx=i,
+                repo_id=repo_id,
+            )
+            if not isinstance(chapter_result, dict):
+                chapter_result = {
+                    "chapter_idx": i,
+                    "content_md": f"(章节 {i} 结果无效)",
+                    "image_svgs": [],
+                }
+            await write_cache(
+                key,
+                json.dumps(chapter_result, ensure_ascii=False),
+                settings=settings,
+            )
+            content_keys.append(key)
+
+        # 清理 filler 实例缓存
+        _filler_cache.pop(f"{agent_id}:{session_id}:{report_type}", None)
+        span.update(output={"filled": len(content_keys)})
+        return {
+            "content_cache_keys": content_keys,
+            "current_chapter_idx": len(chapters),
+            "review_idx": 0,
+        }
+
+
+async def e_review_all_node(state: dict, settings: Any | None = None) -> dict:
+    """PERF-E1: 并行评审全部章节 (单节点替代 E 自环)."""
+    from src.agents.docbot.reviewer import ReviewerE
+
+    agent_id = state.get("agent_id", "agentinsight-docbot")
+    user_id = state.get("user_id", "")
+    session_id = state.get("session_id", "")
+    report_type = state.get("report_type", "")
+    language = state.get("language", "zh")
+    llm_session_id = state.get("llm_session_id", "")
+    repo_id = state.get("repo_id", "")
+    chapters = state.get("chapters", []) or []
+    content_cache_keys = state.get("content_cache_keys", []) or []
+    max_revisions = state.get("max_revisions_per_chapter", 3)
+
+    report_type_safe = report_type or "unknown"
+    async with trace_chain(
+        name=f"docbot.report.{report_type_safe}.review_all",
+        input={"chapter_count": len(chapters)},
+    ) as span:
+        code_learning: dict = {}
+        code_learning_cache_key = state.get("code_learning_cache_key", "")
+        if code_learning_cache_key:
+            raw = await read_cache(code_learning_cache_key, settings=settings)
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        code_learning = parsed
+                except (json.JSONDecodeError, TypeError) as e:
+                    logger.warning("code_learning_cache JSON 解析失败: %s", e)
+
+        # 预读全部 content
+        contents: list[dict] = []
+        for i, key in enumerate(content_cache_keys):
+            content_data: dict = {}
+            raw = await read_cache(key, settings=settings)
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, dict):
+                        content_data = parsed
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            contents.append(content_data)
+
+        max_concurrent = 5
+        if settings is not None:
+            max_concurrent = int(getattr(settings, "chapter_fill_max_concurrent", 5) or 5)
+
+        reviewer = ReviewerE(settings)
+        reviewed_list = await reviewer.review_all_chapters_parallel(
+            chapters=chapters,
+            contents=contents,
+            code_learning=code_learning,
+            report_type=report_type,
+            language=language,
+            llm_session_id=llm_session_id,
+            settings=settings,
+            max_revisions=max_revisions,
+            max_concurrent=max_concurrent,
+        )
+
+        reviewed_keys: list[str] = []
+        for i, reviewed in enumerate(reviewed_list):
+            key = build_cache_key(
+                agent_id=agent_id,
+                user_id=user_id,
+                session_id=session_id,
+                type_="reviewed",
+                report_type=report_type,
+                chapter_idx=i,
+                repo_id=repo_id,
+            )
+            await write_cache(
+                key,
+                json.dumps(reviewed if isinstance(reviewed, dict) else {}, ensure_ascii=False),
+                settings=settings,
+            )
+            reviewed_keys.append(key)
+
+        span.update(output={"reviewed": len(reviewed_keys)})
+        return {
+            "reviewed_cache_keys": reviewed_keys,
+            "review_idx": len(chapters),
+            "revision_count": len(chapters),
+        }
+
+
 async def f_merge_node(state: dict, settings: Any | None = None) -> dict:
     """任务五: F 合并所有章节内容, SMART LLM 去重.
 
@@ -875,7 +1053,9 @@ __all__ = [
     "c_code_learning_node",
     "c_outline_refine_node",
     "d_content_fill_node",
+    "d_content_fill_all_node",
     "e_review_node",
+    "e_review_all_node",
     "f_merge_node",
     "g_final_in_subgraph_node",
 ]

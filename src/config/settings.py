@@ -317,6 +317,22 @@ class Settings(BaseSettings):
     max_concurrent_reports: int = 3
     # 全局 LLM 调用并发上限
     max_llm_concurrency: int = 5
+    # 章级并行填章/评审并发上限 (受 max_llm_concurrency 再限流)
+    # PERF-D1b: 默认 3→5, 实证 fill_all/review_all 仍受章串行度约束
+    chapter_fill_max_concurrent: int = 5
+    # STRATEGIC 上下文窗口 token 预算真源 (学习/纲要裁剪用)
+    strategic_context_tokens: int = 128_000
+    # 幻觉重写门控: 无效符号数 < 该阈值时仅记录、不 strip/不二次 LLM (避免误报破坏真源)
+    hallucination_rewrite_min_symbols: int = 8
+    # 是否启用 draft→refine 二次 LLM (默认关闭, 实证占 ~17% tokens; 质量折中可开)
+    content_refine_enabled: bool = False
+    # API 详情端点卡片模式: deterministic=AST 零 LLM (默认); llm=逐端点 SMART
+    # TOK-EP1 / PERF-EP1: 实证 53×≈28.8k prompt 占填章主调用大半
+    # 注意: 确定性卡片仅替代「接口详情章」填章 LLM, 不可替代纲要 STRATEGIC LLM
+    api_endpoint_card_mode: str = "deterministic"
+    # 禁止跳过纲要 LLM: YAML/AST 骨架仅作基线, 必须经 STRATEGIC 增删改优化
+    # (不同仓库 API/结构不同, 模板无法覆盖; 默认 False)
+    outline_skip_llm_for_api_doc: bool = False
     # RAG 检索并发上限
     max_rag_concurrency: int = 10
     # 代码仓库加密密钥（AES-GCM, 32 字节）

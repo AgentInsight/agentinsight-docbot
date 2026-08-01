@@ -135,6 +135,10 @@ class LLMClient:
     # 成本追踪 per-session 隔离
     # key = session_id, value = {call_count, input_tokens, output_tokens, cost_usd, step_costs}
     _session_costs: dict[str, dict[str, Any]] = field(default_factory=dict, init=False)
+    # PERF-T1: 进程内全局 LLM 并发闸 (懒初始化)
+    _llm_semaphore: ClassVar[asyncio.Semaphore | None] = None
+    _llm_semaphore_n: ClassVar[int] = 0
+    _llm_semaphore_guard: ClassVar[asyncio.Lock | None] = None
 
     # tier 降级链映射. FAST 失败后无降级 (None), 抛出原异常.
     _FALLBACK_TIER: ClassVar[dict[LLMTier, LLMTier | None]] = {
@@ -160,6 +164,18 @@ class LLMClient:
         if field is None:
             raise ValueError(f"未知 LLM 层级: {tier}")
         return cast(str, getattr(self.settings, field))
+
+    @classmethod
+    async def _acquire_llm_semaphore(cls, n: int) -> asyncio.Semaphore:
+        """PERF-T1: 懒初始化全局 LLM 并发 Semaphore."""
+        if cls._llm_semaphore_guard is None:
+            cls._llm_semaphore_guard = asyncio.Lock()
+        async with cls._llm_semaphore_guard:
+            limit = max(1, int(n or 5))
+            if cls._llm_semaphore is None or cls._llm_semaphore_n != limit:
+                cls._llm_semaphore = asyncio.Semaphore(limit)
+                cls._llm_semaphore_n = limit
+            return cls._llm_semaphore
 
     def _get_token_limit(self, tier: LLMTier) -> int:
         """按层级获取 token 上限 (字典查表取代 if-elif)."""
@@ -541,6 +557,39 @@ class LLMClient:
         reasoning_effort 透传 LiteLLM,
               None 时不添加该参数, 不支持该参数的模型由 LiteLLM 静默忽略.
         """
+        # PERF-T1: 全局并发闸
+        sem = await self._acquire_llm_semaphore(
+            int(getattr(self.settings, "max_llm_concurrency", 5) or 5)
+        )
+        async with sem:
+            return await self._achat_inner(
+                messages,
+                tier=tier,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stop=stop,
+                reasoning_effort=reasoning_effort,
+                user_id=user_id,
+                session_id=session_id,
+                span_name=span_name,
+                step=step,
+            )
+
+    async def _achat_inner(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        tier: LLMTier = LLMTier.SMART,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        stop: list[str] | None = None,
+        reasoning_effort: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        span_name: str = "llm-chat",
+        step: str = "unknown",
+    ) -> LLMResponse:
+        """achat 实际实现 (已在 Semaphore 内)."""
         # span 用初始 tier 的 model/params (降级后实际 model 在 cost_details.model 记录)
         initial_model = self._get_model(tier)
         initial_token_limit = max_tokens or self._get_token_limit(tier)
@@ -702,6 +751,40 @@ class LLMClient:
         reasoning_effort 透传 LiteLLM,
               None 时不添加该参数, 不支持该参数的模型由 LiteLLM 静默忽略.
         """
+        # PERF-T1: 流式调用同样受全局并发闸约束
+        sem = await self._acquire_llm_semaphore(
+            int(getattr(self.settings, "max_llm_concurrency", 5) or 5)
+        )
+        async with sem:
+            async for chunk in self._achat_stream_unlocked(
+                messages,
+                tier=tier,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stop=stop,
+                reasoning_effort=reasoning_effort,
+                user_id=user_id,
+                session_id=session_id,
+                span_name=span_name,
+                step=step,
+            ):
+                yield chunk
+
+    async def _achat_stream_unlocked(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        tier: LLMTier = LLMTier.SMART,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        stop: list[str] | None = None,
+        reasoning_effort: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        span_name: str = "llm-chat-stream",
+        step: str = "unknown",
+    ) -> AsyncIterator[str]:
+        """achat_stream 实际实现 (已在 Semaphore 内)."""
         # span 用初始 tier 的 model/params
         initial_model = self._get_model(tier)
         initial_token_limit = max_tokens or self._get_token_limit(tier)

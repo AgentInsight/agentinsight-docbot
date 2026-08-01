@@ -1,0 +1,81 @@
+{
+  "label": "iter-v3",
+  "trace_id": "ed7969c84e6926a92e6ebd1e6d6373de",
+  "session_id": "183a8df5-e1e4-4a43-a152-74256b89100d",
+  "elapsed_s": 702.1,
+  "total_tokens": 1265065,
+  "prompt_tokens": 1132550,
+  "completion_tokens": 132515,
+  "generation_count": 94,
+  "token_breakdown": {
+    "content_fill_main": {
+      "total": 769115,
+      "pct": 60.8,
+      "calls": 13,
+      "prompt": 727920,
+      "completion": 41195,
+      "dur_s": 341.3
+    },
+    "review": {
+      "total": 217027,
+      "pct": 17.2,
+      "calls": 48,
+      "prompt": 171719,
+      "completion": 45308,
+      "dur_s": 287.0
+    },
+    "fill_extra": {
+      "total": 106412,
+      "pct": 8.4,
+      "calls": 29,
+      "prompt": 85096,
+      "completion": 21316,
+      "dur_s": 120.1
+    },
+    "code_learning": {
+      "total": 87613,
+      "pct": 6.9,
+      "calls": 2,
+      "prompt": 77390,
+      "completion": 10223,
+      "dur_s": 161.5
+    },
+    "outline": {
+      "total": 84898,
+      "pct": 6.7,
+      "calls": 2,
+      "prompt": 70425,
+      "completion": 14473,
+      "dur_s": 391.9
+    }
+  },
+  "stage_wall_s": {
+    "docbot.outline_refine.requirements": 166.1,
+    "docbot.code_learning.requirements": 351.2,
+    "docbot.code_learning.api_doc": 364.7,
+    "docbot.report.requirements.content_fill_all": 89.5,
+    "docbot.report.api_doc.content_fill_all": 71.0,
+    "docbot.report.requirements.review_all": 70.1,
+    "docbot.spawn_b_tasks": 694.3,
+    "docbot.report.api_doc.review_all": 29.3,
+    "docbot.outline_refine.api_doc": 225.9,
+    "clone_s": 197.6,
+    "clone_count": 1
+  },
+  "name_counts": {
+    "docbot.review.api_doc.*": 20,
+    "docbot.content_fill.endpoint_hallucination_rewrite.*": 17,
+    "docbot.content_fill.hallucination_rewrite.*": 12,
+    "docbot.content_fill.requirements.*": 11,
+    "docbot.review.requirements.*": 11,
+    "docbot.review.rewrite.requirements.*": 8,
+    "docbot.review.rewrite.api_doc.*": 7,
+    "docbot.content_fill.api_doc.*": 2,
+    "docbot.code_learning.requirements": 1,
+    "docbot.outline_refine.requirements": 1,
+    "docbot.code_learning.adapt.api_doc": 1,
+    "docbot.final_review.api_doc": 1,
+    "docbot.final_review.requirements": 1,
+    "docbot.outline_refine.api_doc": 1
+  }
+}

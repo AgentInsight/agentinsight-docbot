@@ -1,0 +1,441 @@
+{
+  "trace_id": "788d5c59be118809ca0d3d052556824e",
+  "obs_count": 532,
+  "gen_count": 166,
+  "errors": 13,
+  "total_tokens": 2995349,
+  "buckets": {
+    "fill_extra": {
+      "calls": 116,
+      "total": 1944622,
+      "prompt": 1775904,
+      "comp": 168718,
+      "dur_ms": 1199975,
+      "pct": 64.9,
+      "dur_s": 1200.0
+    },
+    "content_fill_main": {
+      "calls": 14,
+      "total": 834183,
+      "prompt": 788494,
+      "comp": 45689,
+      "dur_ms": 397081,
+      "pct": 27.8,
+      "dur_s": 397.1
+    },
+    "review": {
+      "calls": 34,
+      "total": 132276,
+      "prompt": 123554,
+      "comp": 8722,
+      "dur_ms": 115529,
+      "pct": 4.4,
+      "dur_s": 115.5
+    },
+    "code_learning": {
+      "calls": 2,
+      "total": 84268,
+      "prompt": 76326,
+      "comp": 7942,
+      "dur_ms": 74779,
+      "pct": 2.8,
+      "dur_s": 74.8
+    }
+  },
+  "top_prompts": [
+    {
+      "name": "docbot.content_fill.requirements.4",
+      "prompt": 71218,
+      "comp": 3216,
+      "dur_s": 33.6
+    },
+    {
+      "name": "docbot.content_fill.requirements.8",
+      "prompt": 70005,
+      "comp": 3618,
+      "dur_s": 39.5
+    },
+    {
+      "name": "docbot.code_learning.requirements",
+      "prompt": 69831,
+      "comp": 5433,
+      "dur_s": 59.2
+    },
+    {
+      "name": "docbot.content_fill.api_doc.3",
+      "prompt": 60713,
+      "comp": 3569,
+      "dur_s": 30.4
+    },
+    {
+      "name": "docbot.content_fill.requirements.5",
+      "prompt": 59918,
+      "comp": 3363,
+      "dur_s": 28.7
+    },
+    {
+      "name": "docbot.content_fill.requirements.3",
+      "prompt": 59491,
+      "comp": 8192,
+      "dur_s": 53.4
+    },
+    {
+      "name": "docbot.content_fill.requirements.2",
+      "prompt": 59167,
+      "comp": 2967,
+      "dur_s": 24.7
+    },
+    {
+      "name": "docbot.content_fill.requirements.1",
+      "prompt": 57070,
+      "comp": 2089,
+      "dur_s": 19.9
+    },
+    {
+      "name": "docbot.content_fill.requirements.12",
+      "prompt": 55245,
+      "comp": 3213,
+      "dur_s": 22.4
+    },
+    {
+      "name": "docbot.content_fill.requirements.10",
+      "prompt": 54199,
+      "comp": 1496,
+      "dur_s": 13.7
+    },
+    {
+      "name": "docbot.content_fill.requirements.9",
+      "prompt": 53031,
+      "comp": 3167,
+      "dur_s": 27.2
+    },
+    {
+      "name": "docbot.content_fill.requirements.7",
+      "prompt": 52417,
+      "comp": 3410,
+      "dur_s": 34.9
+    },
+    {
+      "name": "docbot.content_fill.requirements.6",
+      "prompt": 48851,
+      "comp": 2319,
+      "dur_s": 21.8
+    },
+    {
+      "name": "docbot.content_fill.requirements.11",
+      "prompt": 46823,
+      "comp": 2859,
+      "dur_s": 24.9
+    },
+    {
+      "name": "docbot.content_fill.api_doc.1",
+      "prompt": 40346,
+      "comp": 2211,
+      "dur_s": 22.0
+    },
+    {
+      "name": "docbot.outline_refine.requirements",
+      "prompt": 32737,
+      "comp": 7122,
+      "dur_s": 130.3
+    },
+    {
+      "name": "docbot.content_fill.api_endpoint.3",
+      "prompt": 28859,
+      "comp": 859,
+      "dur_s": 5.8
+    },
+    {
+      "name": "docbot.content_fill.api_endpoint.4",
+      "prompt": 28859,
+      "comp": 613,
+      "dur_s": 4.6
+    },
+    {
+      "name": "docbot.content_fill.api_endpoint.1",
+      "prompt": 28857,
+      "comp": 619,
+      "dur_s": 5.3
+    },
+    {
+      "name": "docbot.content_fill.api_endpoint.1",
+      "prompt": 28855,
+      "comp": 766,
+      "dur_s": 5.1
+    },
+    {
+      "name": "docbot.content_fill.api_endpoint.1",
+      "prompt": 28841,
+      "comp": 803,
+      "dur_s": 6.7
+    },
+    {
+      "name": "docbot.content_fill.api_endpoint.2",
+      "prompt": 28840,
+      "comp": 1146,
+      "dur_s": 8.2
+    },
+    {
+      "name": "docbot.content_fill.api_endpoint.7",
+      "prompt": 28839,
+      "comp": 1048,
+      "dur_s": 9.2
+    },
+    {
+      "name": "docbot.content_fill.api_endpoint.1",
+      "prompt": 28838,
+      "comp": 835,
+      "dur_s": 6.6
+    },
+    {
+      "name": "docbot.content_fill.api_endpoint.1",
+      "prompt": 28836,
+      "comp": 763,
+      "dur_s": 4.9
+    }
+  ],
+  "top_chains": [
+    {
+      "name": "docbot.spawn_b_tasks",
+      "dur_s": 716.7
+    },
+    {
+      "name": "docbot.code_learning.api_doc",
+      "dur_s": 276.8
+    },
+    {
+      "name": "docbot.code_learning.requirements",
+      "dur_s": 261.2
+    },
+    {
+      "name": "docbot.report.api_doc.content_fill_all",
+      "dur_s": 192.0
+    },
+    {
+      "name": "docbot.report.requirements.content_fill_all",
+      "dur_s": 161.9
+    },
+    {
+      "name": "docbot.outline_refine.requirements",
+      "dur_s": 130.3
+    },
+    {
+      "name": "docbot.report.api_doc.review_all",
+      "dur_s": 128.8
+    },
+    {
+      "name": "docbot.outline_refine.api_doc",
+      "dur_s": 113.8
+    },
+    {
+      "name": "docbot.report.requirements.review_all",
+      "dur_s": 109.6
+    },
+    {
+      "name": "docbot.content_fill.requirements.3",
+      "dur_s": 70.8
+    },
+    {
+      "name": "docbot.review.requirements.3",
+      "dur_s": 54.9
+    },
+    {
+      "name": "docbot.content_fill.requirements.5",
+      "dur_s": 54.6
+    },
+    {
+      "name": "docbot.content_fill.api_doc.8",
+      "dur_s": 53.2
+    },
+    {
+      "name": "docbot.content_fill.requirements.7",
+      "dur_s": 48.2
+    },
+    {
+      "name": "docbot.content_fill.api_doc.6",
+      "dur_s": 47.9
+    },
+    {
+      "name": "docbot.content_fill.requirements.8",
+      "dur_s": 44.3
+    },
+    {
+      "name": "docbot.content_fill.requirements.4",
+      "dur_s": 42.8
+    },
+    {
+      "name": "docbot.content_fill.api_doc.13",
+      "dur_s": 40.4
+    },
+    {
+      "name": "docbot.content_fill.api_doc.3",
+      "dur_s": 38.8
+    },
+    {
+      "name": "docbot.content_fill.api_doc.7",
+      "dur_s": 38.7
+    },
+    {
+      "name": "docbot.content_fill.requirements.9",
+      "dur_s": 38.6
+    },
+    {
+      "name": "docbot.content_fill.requirements.2",
+      "dur_s": 37.4
+    },
+    {
+      "name": "docbot.content_fill.api_doc.5",
+      "dur_s": 37.3
+    },
+    {
+      "name": "docbot.review.api_doc.8",
+      "dur_s": 33.7
+    },
+    {
+      "name": "docbot.content_fill.api_doc.19",
+      "dur_s": 33.2
+    },
+    {
+      "name": "docbot.review.requirements.8",
+      "dur_s": 32.6
+    },
+    {
+      "name": "docbot.content_fill.api_doc.12",
+      "dur_s": 32.4
+    },
+    {
+      "name": "docbot.review.requirements.11",
+      "dur_s": 29.9
+    },
+    {
+      "name": "docbot.content_fill.api_doc.10",
+      "dur_s": 29.4
+    },
+    {
+      "name": "docbot.content_fill.api_doc.1",
+      "dur_s": 28.2
+    },
+    {
+      "name": "docbot.review.api_doc.3",
+      "dur_s": 28.1
+    },
+    {
+      "name": "docbot.review.requirements.12",
+      "dur_s": 27.6
+    },
+    {
+      "name": "docbot.content_fill.requirements.1",
+      "dur_s": 26.9
+    },
+    {
+      "name": "docbot.content_fill.requirements.6",
+      "dur_s": 26.8
+    },
+    {
+      "name": "docbot.content_fill.api_doc.17",
+      "dur_s": 26.6
+    },
+    {
+      "name": "docbot.content_fill.requirements.11",
+      "dur_s": 26.6
+    },
+    {
+      "name": "docbot.review.api_doc.7",
+      "dur_s": 26.5
+    },
+    {
+      "name": "docbot.review.api_doc.6",
+      "dur_s": 26.4
+    },
+    {
+      "name": "docbot.content_fill.requirements.12",
+      "dur_s": 25.5
+    },
+    {
+      "name": "docbot.review.api_doc.13",
+      "dur_s": 25.3
+    }
+  ],
+  "top_tools": [
+    {
+      "name": "docbot.git.clone_repo",
+      "dur_s": 195.6,
+      "level": "DEFAULT"
+    },
+    {
+      "name": "docbot.repo.list_files",
+      "dur_s": 0.9,
+      "level": "DEFAULT"
+    },
+    {
+      "name": "docbot.git.list_files",
+      "dur_s": 0.8,
+      "level": "DEFAULT"
+    },
+    {
+      "name": "docbot.git.get_head_commit_hash",
+      "dur_s": 0.0,
+      "level": "DEFAULT"
+    },
+    {
+      "name": "docbot.git.read_file",
+      "dur_s": 0.0,
+      "level": "DEFAULT"
+    },
+    {
+      "name": "docbot.git.read_file",
+      "dur_s": 0.0,
+      "level": "DEFAULT"
+    },
+    {
+      "name": "docbot.git.read_file",
+      "dur_s": 0.0,
+      "level": "DEFAULT"
+    },
+    {
+      "name": "docbot.git.read_file",
+      "dur_s": 0.0,
+      "level": "DEFAULT"
+    },
+    {
+      "name": "docbot.git.read_file",
+      "dur_s": 0.0,
+      "level": "DEFAULT"
+    },
+    {
+      "name": "docbot.git.read_file",
+      "dur_s": 0.0,
+      "level": "DEFAULT"
+    },
+    {
+      "name": "docbot.git.read_file",
+      "dur_s": 0.0,
+      "level": "DEFAULT"
+    },
+    {
+      "name": "docbot.git.read_file",
+      "dur_s": 0.0,
+      "level": "DEFAULT"
+    },
+    {
+      "name": "docbot.git.read_file",
+      "dur_s": 0.0,
+      "level": "DEFAULT"
+    },
+    {
+      "name": "docbot.git.read_file",
+      "dur_s": 0.0,
+      "level": "DEFAULT"
+    },
+    {
+      "name": "docbot.git.read_file",
+      "dur_s": 0.0,
+      "level": "DEFAULT"
+    },
+    {
+      "name": "docbot.git.read_file",
+      "dur_s": 0.0,
+      "level": "DEFAULT"
+    }
+  ]
+}

@@ -315,30 +315,26 @@ def format_glossary_for_prompt(
             seen.add(t)
             unique_terms.append(t)
 
+    # 仅作 prompt 内部指令; 禁止含版本号/调试标签, 降低 LLM 原样抄进用户文档的风险
     lines = [
-        "# 术语词典 (v8-P0-B 强制约束: 以下标识符必须保留原文, 禁止翻译为中文)",
+        "[内部约束-勿写入正文] 以下标识符须保留原文, 禁止翻译为中文:",
         ", ".join(unique_terms),
         "",
-        "# 强制规则:",
-        "# 1. 上述标识符在文档中必须原样出现, 禁止翻译 (如 UserController 不能写成\"用户控制器\")",
-        "# 2. 文件路径中的目录名/文件名禁止翻译 (如 controllers/ 不能写成\"控制器/\")",
-        "# 3. 枚举常量名禁止翻译 (如 StatusActive 不能写成\"状态激活\")",
-        "# 4. 品牌名禁止翻译 (如 BrandName 不能写成\"品牌名\")",
+        "[内部约束-勿写入正文] 规则摘要:",
+        "- 类名/方法名/枚举常量须原样出现",
+        "- 文件路径禁止翻译或小写化",
+        "- 品牌名禁止翻译",
     ]
 
-    # v9-P0-C 新增: forced_original_terms 段落 (强制保留原文, 禁止中英对照翻译)
+    # forced_original_terms: 强制保留原文, 禁止中英对照翻译
     forced = glossary.get("forced_original_terms", [])
     if forced:
         lines.append("")
         lines.append(
-            "# 强制保留原文术语 (v9-P0-C: 以下术语必须使用英文原文, 禁止翻译, 禁止中英对照模式)"
+            "[内部约束-勿写入正文] 强制原文术语 (禁止中英对照):"
         )
         lines.append(", ".join(forced[:80]))  # 限制 80 个, 控制 token
-        lines.append("")
-        lines.append("# v9-P0-C 额外强制规则:")
-        lines.append("# 5. 上述强制术语必须使用英文原文, 禁止翻译为中文 (如 Agent 不能写成\"智能体\")")
-        lines.append("# 6. 禁止使用中英对照翻译模式 (如 \"智能体（Agent）\" 应直接写为 \"Agent\")")
-        lines.append("# 7. 路径必须保留原始 PascalCase 大小写 (如 API/Controllers 不能写成 api/controllers)")
+        lines.append("- 路径须保留原始 PascalCase (如 API/Controllers)")
 
     return "\n".join(lines)
 

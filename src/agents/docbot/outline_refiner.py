@@ -119,6 +119,10 @@ class OutlineRefinerC:
                     default_outline = []
             if not isinstance(default_outline, list):
                 default_outline = []
+            # YAML 基线章节数 (骨架替换 default_outline 前保留, 供截断回退门禁)
+            yaml_outline_baseline: list[dict] = [
+                c for c in default_outline if isinstance(c, dict)
+            ]
 
             # 2. 加载 max_chapters (从 outline meta)
             max_chapters = 30  # 兜底默认值
@@ -173,32 +177,66 @@ class OutlineRefinerC:
                 )
                 span.update(metadata={"v9_p1_f_skeleton_chapters": len(skeleton_outline)})
 
-            # 6. 构造 prompt (P0-1: 注入 agents_md / readme_md / max_chapters 作为 ground truth)
+            # 硬性要求: 禁止跳过纲要 STRATEGIC LLM。
+            # YAML / AST 骨架仅作基线; 不同仓库 API/结构不同, 必须经 LLM 增删改优化。
+            # outline_skip_llm_for_api_doc 已废弃 (默认 False); 若误配为 True 仅告警不跳过。
+            if bool(
+                getattr(
+                    settings or self.settings,
+                    "outline_skip_llm_for_api_doc",
+                    False,
+                )
+            ):
+                logger.warning(
+                    "outline_skip_llm_for_api_doc=True 已忽略: 纲要必须经 STRATEGIC LLM "
+                    "(report_type=%s, skeleton_chapters=%d)",
+                    report_type,
+                    len(skeleton_outline) if skeleton_outline else 0,
+                )
+                span.update(metadata={"outline_skip_llm_ignored": True})
+
+            # 6. 构造 prompt (TOK-O1: 纲要输入预算; 骨架已作基线)
+            outline_for_prompt: list[dict] = []
+            for ch in default_outline:
+                if not isinstance(ch, dict):
+                    continue
+                outline_for_prompt.append(
+                    {
+                        "idx": ch.get("idx"),
+                        "title": ch.get("title"),
+                        "purpose": str(ch.get("purpose") or "")[:300],
+                        "sections": ch.get("sections") or [],
+                        "key_points": ch.get("key_points") or [],
+                        # 故意省略 example, 降低 prompt
+                    }
+                )
             prompt = prompt_template.format(
                 role_name=persona.get("role_name", "技术文档专家"),
                 description=persona.get("description", ""),
                 report_type=report_type,
                 language=language,
-                default_outline=default_outline,
-                code_summary=code_summary[:50_000],
+                default_outline=outline_for_prompt,
+                code_summary=code_summary[:10_000],
                 key_modules=code_learning.get("key_modules", [])
                 if isinstance(code_learning, dict)
                 else [],
                 dependencies=code_learning.get("dependencies", [])
                 if isinstance(code_learning, dict)
                 else [],
-                agents_md=agents_md[:50_000] if agents_md else "(未提供 AGENTS.md)",
-                readme_md=readme_md[:30_000] if readme_md else "(未提供 README.md)",
+                agents_md=agents_md[:8_000] if agents_md else "(未提供 AGENTS.md)",
+                readme_md=readme_md[:6_000] if readme_md else "(未提供 README.md)",
                 max_chapters=max_chapters,
                 # v8 新增 kwargs (从 code_learning 字典提取, 失败降级为空字符串)
-                endpoints_text=self._safe_get_str(code_learning, "endpoints_text"),
-                enums_text=self._safe_get_str(code_learning, "enums_text"),
+                endpoints_text=self._safe_get_str(code_learning, "endpoints_text")[:5000],
+                enums_text=self._safe_get_str(code_learning, "enums_text")[:2500],
+                glossary_text=self._safe_get_str(code_learning, "glossary_text")[:3000],
                 project_metadata_text=self._safe_get_str(
                     code_learning, "project_metadata_text"
-                ),
-                glossary_text=self._safe_get_str(code_learning, "glossary_text"),
-                scopes_text=self._safe_get_str(code_learning, "scopes_text"),
-                config_specs_text=self._safe_get_str(code_learning, "config_specs_text"),
+                )[:1800],
+                config_specs_text=self._safe_get_str(code_learning, "config_specs_text")[
+                    :1500
+                ],
+                scopes_text=self._safe_get_str(code_learning, "scopes_text")[:1500],
             )
 
             # v6-P0-E: 注入文档结构通用引导, 让 LLM 基于代码学习结果优化纲要结构
@@ -272,6 +310,43 @@ class OutlineRefinerC:
                 report_type=report_type,
             )
 
+            # 保真门禁: JSON 截断/过度删章导致章节过少时回退
+            # 实证 v5: requirements 截断后仅 2 章; quality-balance: design 仅 4 章 (YAML=13)
+            # 对无 AST 骨架的类型 (architecture/design 等) 也必须用 YAML 基线做下限
+            chapters_out = outline.get("chapters") or []
+            skel_n = len(skeleton_outline) if skeleton_outline else 0
+            yaml_n = len(yaml_outline_baseline)
+            floor_n = max(skel_n, yaml_n)
+            min_required = max(5, int(floor_n * 0.5)) if floor_n >= 5 else 0
+            if min_required and len(chapters_out) < min_required:
+                # 优先回退更大的基线 (骨架 vs YAML)
+                if skel_n >= yaml_n and skel_n > 0:
+                    fallback_chapters = skeleton_outline
+                    fallback_tag = "skeleton"
+                else:
+                    fallback_chapters = yaml_outline_baseline
+                    fallback_tag = "yaml"
+                logger.warning(
+                    "纲要章节过少 (%d < min_required=%d, skeleton=%d, yaml=%d), "
+                    "回退 %s (%d 章)",
+                    len(chapters_out),
+                    min_required,
+                    skel_n,
+                    yaml_n,
+                    fallback_tag,
+                    len(fallback_chapters),
+                )
+                outline = {
+                    "chapters": fallback_chapters,
+                    "refine_summary": (
+                        f"截断/过少回退{fallback_tag} "
+                        f"({len(chapters_out)}→{len(fallback_chapters)})"
+                    ),
+                    "_source_counts": {fallback_tag: len(fallback_chapters)},
+                    "_fallback_skeleton": fallback_tag == "skeleton",
+                    "_fallback_yaml": fallback_tag == "yaml",
+                }
+
             span.update(
                 output={
                     "chapter_count": len(outline.get("chapters", [])),
@@ -279,6 +354,7 @@ class OutlineRefinerC:
                     "has_agents_md": bool(agents_md),
                     "has_readme_md": bool(readme_md),
                     "outline_sources": outline.get("_source_counts"),
+                    "fallback_skeleton": bool(outline.get("_fallback_skeleton")),
                 }
             )
             return outline
