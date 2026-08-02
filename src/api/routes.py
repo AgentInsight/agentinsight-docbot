@@ -149,6 +149,19 @@ class ChatCompletionResponse(BaseModel):
 # ========== 会话持久化辅助 (以 UserId 为单位的对话保存) ==========
 
 
+def _session_title_from_query(query: str | None) -> str:
+    """从首条用户消息推导会话标题.
+
+    generate_docs JSON 指令（含截断前缀）不得作为会话名, 回退为「当前会话」.
+    """
+    if not query:
+        return ""
+    q = query.strip()
+    if q.startswith("{") and '"action"' in q and "generate_docs" in q:
+        return "当前会话"
+    return q[:100]
+
+
 async def _persist_user_message(
     session_id: str,
     agent_id: str,
@@ -165,11 +178,15 @@ async def _persist_user_message(
 
         store = get_session_store()
         client_ip = get_request_client_ip()
-        title = query[:100] if query else ""
+        title = _session_title_from_query(query)
         await store.ensure_session(session_id, agent_id, user_id, query=query, client_ip=client_ip)
         if title:
             existing_title = await store.get_session_title(session_id, agent_id, user_id)
-            if not existing_title:
+            # 空标题或历史误写入的 generate_docs JSON → 用合理默认名覆盖
+            if not existing_title or (
+                existing_title.strip().startswith("{")
+                and "generate_docs" in existing_title
+            ):
                 await store.update_session_title(session_id, agent_id, user_id, title)
         await store.save_message(
             session_id=session_id,
@@ -395,6 +412,7 @@ async def chat_completions(
             user_id, agent_id, requested_count=requested_docs
         )
         if not allowed:
+            # 当日剩余额度 (0=已用完; >0 但 < requested_docs=不足以覆盖所选文档类型)
             remaining = max(0, effective_limit - current_count)
             if remaining <= 0:
                 limit_msg = (
@@ -410,7 +428,7 @@ async def chat_completions(
                     f"每日限额将在北京时间次日 0 点重置, 届时可继续使用。"
                 )
             if request.stream:
-                # 流式: 发送友好提示后关闭 SSE (OpenAI 兼容契约与 researcher 一致)
+                # 流式: 发送友好提示后关闭 SSE (delta.remaining 与 researcher 字段对齐)
                 async def _limit_exceeded_stream() -> Any:
                     completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
                     chunk = {
@@ -421,7 +439,10 @@ async def chat_completions(
                         "choices": [
                             {
                                 "index": 0,
-                                "delta": {"content": limit_msg},
+                                "delta": {
+                                    "content": limit_msg,
+                                    "remaining": remaining,
+                                },
                                 "finish_reason": None,
                             }
                         ],
@@ -453,7 +474,7 @@ async def chat_completions(
                         "X-Session-Id": session_id,
                     },
                 )
-            # 非流式: 返回 JSON 错误 (OpenAI 兼容 error 结构)
+            # 非流式: 返回 JSON 错误 (error.remaining 供前端结构化读取)
             return JSONResponse(
                 status_code=429,
                 content={
@@ -461,6 +482,7 @@ async def chat_completions(
                         "message": limit_msg,
                         "type": "rate_limit_exceeded",
                         "code": "daily_report_limit",
+                        "remaining": remaining,
                     }
                 },
                 headers={"X-Session-Id": session_id},
@@ -602,31 +624,80 @@ async def _stream_docbot(
 
             final_state: dict[str, Any] = {}
 
-            async for event in graph.astream(
-                initial_state, config=graph_config, stream_mode="updates"
-            ):
-                for node_name, delta in event.items():
-                    if not isinstance(delta, dict):
+            # 立即推送启动帧, 避免首节点耗时导致前端长时间空白
+            start_msg = "\n\n> **[开始生成]** 文档生成流水线已启动，请稍候…\n"
+            yield _sse_chunk({"content": start_msg})
+            collected_content.append(start_msg)
+
+            # 用队列合并 graph 事件与心跳: 长节点执行期间每 8s 推送一次,
+            # 防止浏览器/代理侧看起来像「对话框无消息」
+            event_queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
+
+            async def _produce_graph_events() -> None:
+                try:
+                    async for event in graph.astream(
+                        initial_state, config=graph_config, stream_mode="updates"
+                    ):
+                        await event_queue.put(("event", event))
+                except Exception as exc:  # noqa: BLE001 — 交由消费侧统一处理
+                    await event_queue.put(("error", exc))
+                finally:
+                    await event_queue.put(("done", None))
+
+            producer = asyncio.create_task(_produce_graph_events())
+            heartbeat_count = 0
+            try:
+                while True:
+                    try:
+                        kind, payload = await asyncio.wait_for(event_queue.get(), timeout=8.0)
+                    except asyncio.TimeoutError:
+                        heartbeat_count += 1
+                        # 心跳不写入 collected_content, 避免污染落库的会话正文
+                        yield _sse_chunk(
+                            {
+                                "content": (
+                                    f"\n\n> **[进行中]** 仍在生成文档"
+                                    f"（已等待约 {heartbeat_count * 8} 秒）…\n"
+                                )
+                            }
+                        )
                         continue
-                    final_state.update(delta)
 
-                    label = node_label.get(node_name, node_name)
-                    progress = f"\n\n> **[{label}]** "
-                    if node_name == "spawn_b_tasks":
-                        report_count = len(delta.get("report_tasks", []))
-                        progress += f"已派发 {report_count} 个报告任务\n"
-                    elif node_name == "save_reports":
-                        progress += "报告保存完成\n"
-                    elif node_name == "final_reviewer_g":
-                        progress += "终审完成\n"
-                    else:
-                        progress += "\n"
+                    if kind == "done":
+                        break
+                    if kind == "error":
+                        raise payload
 
-                    yield _sse_chunk({"content": progress})
-                    if progress:
-                        collected_content.append(progress)
-                    # 背压: 让出控制权
-                    await asyncio.sleep(0.001)
+                    event = payload
+                    for node_name, delta in event.items():
+                        if not isinstance(delta, dict):
+                            continue
+                        final_state.update(delta)
+
+                        label = node_label.get(node_name, node_name)
+                        progress = f"\n\n> **[{label}]** "
+                        if node_name == "spawn_b_tasks":
+                            report_count = len(delta.get("report_tasks", []))
+                            progress += f"已派发 {report_count} 个报告任务\n"
+                        elif node_name == "save_reports":
+                            progress += "报告保存完成\n"
+                        elif node_name == "final_reviewer_g":
+                            progress += "终审完成\n"
+                        else:
+                            progress += "\n"
+
+                        yield _sse_chunk({"content": progress})
+                        if progress:
+                            collected_content.append(progress)
+                        # 背压: 让出控制权
+                        await asyncio.sleep(0.001)
+            finally:
+                if not producer.done():
+                    producer.cancel()
+                    try:
+                        await producer
+                    except (asyncio.CancelledError, Exception):
+                        pass
 
             # 输出最终报告内容 (从 final_reports 列表提取, save_reports_node 已持久化到 DB)
             final_reports = final_state.get("final_reports") or []

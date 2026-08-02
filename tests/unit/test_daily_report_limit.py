@@ -151,6 +151,7 @@ def test_ip_user_exceeded_non_stream(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "3/3" in msg
     assert data["error"]["type"] == "rate_limit_exceeded"
     assert data["error"]["code"] == "daily_report_limit"
+    assert data["error"]["remaining"] == 0
 
 
 # ========== 场景 2: 未超限 - 非流式 ==========
@@ -198,9 +199,11 @@ def test_ip_user_exceeded_stream(monkeypatch: pytest.MonkeyPatch) -> None:
                 chunks.append(json.loads(payload))
 
     assert len(chunks) >= 2
-    first_content = chunks[0]["choices"][0]["delta"].get("content", "")
+    first_delta = chunks[0]["choices"][0]["delta"]
+    first_content = first_delta.get("content", "")
     assert "已达上限" in first_content
     assert "3/3" in first_content
+    assert first_delta.get("remaining") == 0
     assert chunks[-1]["choices"][0]["finish_reason"] == "stop"
 
 
@@ -296,10 +299,12 @@ def test_remaining_insufficient_for_multi_types(monkeypatch: pytest.MonkeyPatch)
     response = client.post("/v1/chat/completions", json=body)
 
     assert response.status_code == 429
-    msg = response.json()["error"]["message"]
+    err = response.json()["error"]
+    msg = err["message"]
     assert "剩余次数为 1" in msg
     assert "2 份" in msg
     assert "每个报告类型计为 1 份" in msg
+    assert err["remaining"] == 1
     mock_increment.assert_not_called()
 
 

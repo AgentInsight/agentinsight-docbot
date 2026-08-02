@@ -118,6 +118,12 @@ class SessionStore:
         """
         pool = await get_pool(self._settings)
         async with pool.acquire() as conn:
+            # generate_docs JSON 指令不得作为会话 title
+            raw_q = (query or "").strip()
+            if raw_q.startswith("{") and '"action"' in raw_q and "generate_docs" in raw_q:
+                insert_title = "当前会话"
+            else:
+                insert_title = (query[:100] if query else "") or ""
             # 先尝试插入 (幂等), 不存在时插入
             await conn.execute(
                 """
@@ -132,7 +138,7 @@ class SessionStore:
                 agent_id,
                 user_id,
                 query,
-                (query[:100] if query else "") or "",
+                insert_title,
                 client_ip or "",
             )
 
