@@ -284,7 +284,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="agentinsight-docbot",
         description="根据代码仓库一键生成技术文档的智能体",
-        version="1.0.0",
+        version="1.0.1",
         lifespan=lifespan,
         docs_url="/docs" if settings.env == "dev" else None,
         redoc_url=None,
@@ -319,7 +319,7 @@ def create_app() -> FastAPI:
             content={
                 "status": "ok",
                 "service": "agentinsight-docbot",
-                "version": "1.0.0",
+                "version": "1.0.1",
             },
         )
 

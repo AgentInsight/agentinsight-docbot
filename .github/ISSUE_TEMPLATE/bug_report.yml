@@ -32,7 +32,7 @@ body:
         - OS: [如 Windows 11 / Ubuntu 22.04 / macOS 14]
         - Python: [如 3.12.1, 项目要求 ≥3.11]
         - Docker / Compose: [版本]
-        - 项目版本: [git commit hash 或 v0.1.0]
+        - 项目版本: [git commit hash 或 v1.0.1]
         - 部署模式: [生产联网 / QA离线 / 生产离线 / 本地 uvicorn]
         - Agent: agentinsight-docbot (端口 8068)
         - LLM 模型: [如 deepseek/deepseek-v4-flash]

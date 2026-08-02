@@ -12,13 +12,39 @@
 [![LangGraph](https://img.shields.io/badge/LangGraph-%E2%89%A51.2-purple.svg)](https://langchain-ai.github.io/langgraph/)
 [![code style: ruff](https://img.shields.io/badge/code%20style-ruff-261230.svg)](https://docs.astral.sh/ruff/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blue.svg)](docker-compose.yml)
-[![Version](https://img.shields.io/badge/version-0.1.0-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.0.1-orange.svg)](CHANGELOG.md)
 
 [中文](#中文) | [English](#english)
 
 ---
 
 ## 中文
+
+## 🌐 在线体验(官方 Demo)
+
+无需部署,直接访问官方在线 Demo **测试页面**即可体验全部能力:
+
+| 入口 | 地址 | 说明 |
+|------|------|------|
+| **测试页面(推荐)** ⭐ | http://43.139.209.145/ | 内置前端联调页面,支持会话管理、流式渲染、工具调用展示、文件上传、报告下载 |
+| **健康检查** | http://43.139.209.145/api/health | 容器与服务健康状态 |
+| **Agent 发现** | http://43.139.209.145/agent/agentinsight-researcher/.well-known/agent-discovery.json | Agent Discovery Protocol 公开元信息 |
+
+> 💡 **使用提示**:
+> - **推荐通过测试页面试用**:打开页面即可零配置体验研究报告生成、流式渲染、多 Agent 协作等全部能力,无需手动构造 API 请求。
+> - Demo 环境为 `SELF_HOST=False` 云托管模式,测试页面会引导鉴权与点数校验,无需手动处理 Bearer Token。
+> - 若返回 502,通常是 Demo 后端临时维护,稍后重试即可。
+> - **官方 Demo 仅建议通过页面试用,不建议直接调用 API**;API 直连调用(如 curl/SDK)请使用本地部署 `localhost:8066`(见下文「快速开始」)。
+
+### 30 秒上手 Demo
+
+1. **打开测试页面**:浏览器访问 http://43.139.209.145/
+2. **注册账号并登录**:首次使用需在 [AgentInsight 平台](https://agentinsight.goldebridge.com/platform) 注册账号并登录。
+3. **输入研究问题**:在消息输入框输入如 `分析2026年中国新能源汽车市场格局`,Enter 发送。
+4. **观察流式渲染**:报告逐段流式输出,工具调用与检索来源以折叠面板展示。
+5. **下载报告**:报告生成完成后,可通过页面下载 Markdown / HTML / PDF / DOCX / JSON 多种格式。
+
+---
 
 ## 项目简介
 
@@ -31,7 +57,7 @@
 | 元搜索 | **无 SearXNG**(面向仓库 RAG, 非 Web 搜索) |
 | Compose 项目名 | `-p agentinsight-docbot` |
 | 前端 | **不含前端**; UI 由独立项目 [`agentinsight-demo`](../agentinsight-demo) 提供 |
-| 版本 | **v0.1.0** Initial Release |
+| 版本 | **v1.0.1** |
 
 ### 核心能力
 
@@ -170,6 +196,24 @@ mypy src/ --strict
 
 ---
 
+## Roadmap（路线图）
+
+基于当前仓库代码与测试现状（截至 v1.0.1）：
+
+| 状态 | 项 |
+|------|-----|
+| ✅ 已完成 | 7 子智能体(A–G) + 6 步流水线；8 种文档类型 × 5 种格式 × 2 种语言(`zh`/`en`) |
+| ✅ 已完成 | OpenAI 兼容 API（SSE）+ `/v1/repos` + `/v1/sessions` + 报告下载；刻意不暴露 feedback/ws/mcp CRUD |
+| ✅ 已完成 | 独立 5 容器部署（无 SearXNG）；系统 MCP（git + filesystem）；AES-GCM Git 凭据；JWT/IP 身份解析 |
+| ✅ 已完成 | 仓库 RAG（分块/BM25+向量/`repo_id` namespace）；Redis 流水线缓存；AgentInsight 6 类 span |
+| ✅ 已完成 | 日生成限额、代码图谱/引用/结构校验等增强；unit/api/e2e 等测试分层骨架 |
+| 🔄 进行中 | 多视角代码学习（`docbot_multi_perspective_enabled`，默认关闭）；可选 Rerank（`rerank_enabled`，默认关闭） |
+| 🔄 进行中 | 与官方 Demo / `agentinsight-demo` 联调体验与文档入口同步 |
+| 📋 计划中 | RAGAS/DeepEval 评测数据集与 CI 门禁（`evals/` 尚未落地） |
+| 📋 计划中 | 更多文档类型/纲要模板；生产可观测与容量调优 |
+
+---
+
 ## 许可证
 
 [MIT](LICENSE) · Copyright (c) 2026 AgentInsight
@@ -178,9 +222,35 @@ mypy src/ --strict
 
 ## English
 
+## 🌐 Online Demo (Official)
+
+Try all capabilities without deployment via the official online demo **test page**:
+
+| Entry | URL | Description |
+|-------|-----|-------------|
+| **Test Page (Recommended)** ⭐ | http://43.139.209.145/ | Built-in frontend debug page with session management, streaming rendering, tool call display, file upload, report download |
+| **Health Check** | http://43.139.209.145/api/health | Container and service health status |
+| **Agent Discovery** | http://43.139.209.145/agent/agentinsight-researcher/.well-known/agent-discovery.json | Agent Discovery Protocol public metadata |
+
+> 💡 **Usage Notes**:
+> - **Recommended to try via the test page**: open the page to experience research report generation, streaming rendering, multi-agent collaboration, and all capabilities with zero configuration, no need to manually construct API requests.
+> - The demo runs in `SELF_HOST=False` cloud-hosted mode; the test page handles auth and quota validation, no need to manually handle Bearer Token.
+> - If a 502 is returned, the demo backend is temporarily under maintenance; please retry later.
+> - **The official demo is only recommended for page trial, not for direct API calls**; for direct API calls (curl/SDK), use local deployment `localhost:8066` (see "Quick Start" below).
+
+### 30-Second Quick Start with Demo
+
+1. **Open the test page**: visit http://43.139.209.145/ in your browser
+2. **Register an account and log in**: First-time users need to register an account and log in on the [AgentInsight platform](https://agentinsight.goldebridge.com/platform).
+3. **Enter a research question**: type a query like `Analyze the 2026 China new energy vehicle market landscape` in the message input box and press Enter.
+4. **Watch streaming rendering**: the report streams out paragraph by paragraph; tool calls and retrieval sources are shown in collapsible panels.
+5. **Download the report**: after generation, download the report in Markdown / HTML / PDF / DOCX / JSON formats from the page.
+
+---
+
 **agentinsight-docbot** is an independently deployable documentation agent
 (port **8068**, **5 containers**, **no SearXNG**) that generates technical docs
-from a Git repository via OpenAI-compatible SSE APIs.
+from a Git repository via OpenAI-compatible SSE APIs. Version **v1.0.1**.
 
 ### Quick start
 
@@ -198,5 +268,15 @@ from a Git repository via OpenAI-compatible SSE APIs.
 
 See [`docs/architecture.md`](docs/architecture.md), [AGENTS.md](AGENTS.md),
 [CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.md](SECURITY.md).
+
+### Roadmap
+
+| Status | Item |
+|--------|------|
+| Done | 7 sub-agents, 6-step pipeline, 8 report types × 5 formats × 2 languages |
+| Done | OpenAI-compatible SSE API, `/v1/repos`, sessions, report download; no feedback/ws/mcp CRUD |
+| Done | 5-container stack (no SearXNG), system MCP, AES-GCM credentials, JWT/IP auth, repo RAG |
+| In progress | Multi-perspective learning & optional Rerank (feature-flagged, off by default); Demo UX sync |
+| Planned | RAGAS/DeepEval CI gates; more outline templates; capacity tuning |
 
 Licensed under [MIT](LICENSE).

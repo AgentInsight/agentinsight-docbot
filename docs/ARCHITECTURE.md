@@ -2,13 +2,13 @@
 
 | 元信息 | 值 |
 |--------|-----|
-| **版本** | v2.2 |
+| **版本** | v2.3 |
 | **日期** | 2026-08-02 |
 | **端口** | 8068 |
 | **`agent_id`** | `agentinsight-docbot` |
 | **Compose 项目名** | `agentinsight-docbot`（与同机 researcher 8066 并存） |
 | **容器数** | **5**（postgres / redis / qdrant / embeddings / agent-docbot）；**无 SearXNG** |
-| **开源版本** | v0.1.0 Initial Release |
+| **开源版本** | v1.0.1 |
 | **真源规则** | 根目录 [`AGENTS.md`](../../AGENTS.md)、本目录 [`AGENTS.md`](../AGENTS.md) |
 | **架构 SSOT** | 本文档 [`docs/architecture.md`](./architecture.md)（仓库内仅此一份顶层架构文档，勿另建分叉副本） |
 | **代码级设计** | [`DESIGN_AGENT.md`](./DESIGN_AGENT.md)（节点签名 / 测试骨架；与本文冲突时以**最新代码**为准，并回写本文） |
@@ -684,3 +684,23 @@ flowchart LR
 | `max_chapters_per_report` | 20 | 章节上限 |
 
 Span 命名（节选）：`docbot.code_learning.{report_type}` / `docbot.outline_refine.{report_type}` / `docbot.report.*.content_fill.{idx}` / `docbot.cache.read|write`；embedding 走 `trace_embedding`；RAG 走 `trace_retriever`；MCP 走 `trace_tool`。
+
+---
+
+## 17. Roadmap（路线图）
+
+> 与根目录 [`README.md`](../README.md) Roadmap 对齐；状态以**仓库当前代码**为准，不将未落地能力标为已完成。
+
+| 状态 | 能力项 | 代码/证据 |
+|------|--------|-----------|
+| ✅ 已完成 | 顶层图 + 报告子图、7 子智能体(A–G)、6 步流水线 | `src/graph/`、`src/agents/docbot/`、`src/skills/docbot/` |
+| ✅ 已完成 | 8 种文档 persona + YAML 大纲；`zh`/`en`；5 种导出 | `src/config/docbot/`、`skills/researcher/publisher.py` |
+| ✅ 已完成 | OpenAI 兼容 SSE、`/v1/repos`、`/v1/sessions`、报告下载 | `src/api/`；刻意不暴露 feedback/ws/mcp CRUD |
+| ✅ 已完成 | 5 容器独立部署、系统 MCP、AES-GCM、JWT/IP | `docker-compose.yml`、`tools/git_mcp.py`、`server.py` lifespan |
+| ✅ 已完成 | 仓库 RAG（`repo_id` namespace）+ Redis 流水线缓存 + AgentInsight 追踪 | `src/rag/`、`skills/docbot/cache.py`、`observability/` |
+| ✅ 已完成 | 日生成限额、代码图谱/引用/结构校验等增强；测试分层 | `settings.ip_daily_report_limit`、`tests/unit|api|e2e/` |
+| 🔄 进行中 | 多视角代码学习（默认关闭） | `docbot_multi_perspective_enabled=False`，`multi_perspective_learner.py` |
+| 🔄 进行中 | 可选 Rerank（默认关闭） | `rerank_enabled=False`；compose `profiles: [rerank]` |
+| 🔄 进行中 | 官方 Demo / `agentinsight-demo` 联调与文档入口同步 | README「在线体验」与公共 Demo 地址 |
+| 📋 计划中 | RAGAS/DeepEval 评测与 CI 门禁 | `evals/` 目录尚未落地数据集与 runner |
+| 📋 计划中 | 更多文档类型/纲要模板；生产容量与观测调优 | 待产品排期 |

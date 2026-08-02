@@ -1,8 +1,9 @@
 # agentinsight-docbot 智能体详细设计文档（代码级）
 
-> 版本：v1.2  
+> 版本：v1.3  
 > 日期：2026-08-02  
-> 开源版本：v0.1.0 Initial Release  
+> 开源版本：v1.0.1  
+
 > 配套：[architecture.md](./architecture.md) / [DESIGN_FRONTEND.md](./DESIGN_FRONTEND.md)（前端实现位于 `agentinsight-demo`，本仓库不含前端源码）
 
 ---

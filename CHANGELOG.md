@@ -16,15 +16,25 @@
 
 ### 计划中
 
-- RAGAS/DeepEval 评测门禁 CI 化
+- RAGAS/DeepEval 评测数据集与 CI 门禁（`evals/` 尚未落地）
 - 更多文档类型与纲要模板
-- 与演示平台联调体验优化
+- 多视角学习 / 可选 Rerank 默认策略与容量调优
 
 ---
 
-## [0.1.0] - 2026-08-02
+## [1.0.1] - 2026-08-02
 
-### Initial Release — 开源初始版本
+### Changed — 文档与发布同步
+
+- README 同步官方 Demo「在线体验」入口（与姊妹项目一致的公共 Demo 地址）
+- 对外版本号统一为 **1.0.1**（README / CHANGELOG / pyproject / CITATION / server `/health` 等）
+- 基于当前代码实现状态重写 Roadmap（已完成 / 进行中 / 计划中）
+
+---
+
+## [1.0.0] - 2026-08-02
+
+### Initial Release — 开源初始版本（`Sync_Release_v1.0.0`）
 
 #### ✨ 新增
 
@@ -65,15 +75,25 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Planned
 
-- CI gates for RAGAS/DeepEval
+- RAGAS/DeepEval datasets and CI gates (`evals/` not landed yet)
 - More document types and outline templates
-- Demo platform UX polish
+- Multi-perspective learning / optional Rerank defaults and capacity tuning
 
 ---
 
-## [0.1.0] - 2026-08-02
+## [1.0.1] - 2026-08-02
 
-### Initial Release
+### Changed — Docs & release sync
+
+- README: official Demo "online experience" section (same public Demo URLs as sibling project)
+- Public version bumped to **1.0.1** across docs and runtime metadata
+- Roadmap rewritten to match current code status
+
+---
+
+## [1.0.0] - 2026-08-02
+
+### Initial Release (`Sync_Release_v1.0.0`)
 
 #### Added
 
@@ -84,5 +104,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - AES-GCM git credentials, AgentInsight observability, JWT + data isolation
 - UI lives in sibling project `agentinsight-demo`
 
-[Unreleased]: https://github.com/AgentInsight/agentinsight-docbot/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/AgentInsight/agentinsight-docbot/releases/tag/v0.1.0
+[Unreleased]: https://github.com/AgentInsight/agentinsight-docbot/compare/Sync_Release_v1.0.1...HEAD
+[1.0.1]: https://github.com/AgentInsight/agentinsight-docbot/compare/Sync_Release_v1.0.0...Sync_Release_v1.0.1
+[1.0.0]: https://github.com/AgentInsight/agentinsight-docbot/releases/tag/Sync_Release_v1.0.0

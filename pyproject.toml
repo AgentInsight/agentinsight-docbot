@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentinsight-docbot"
-version = "0.1.0"
+version = "1.0.1"
 description = "代码仓库技术文档生成智能体, 基于 LangGraph + LiteLLM + Qdrant"
 requires-python = ">=3.11"
 readme = "README.md"
