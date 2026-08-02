@@ -260,11 +260,16 @@ class TestDocbotGraphFlow:
             patch("src.memory.report_store.ReportStore", return_value=mock_store),
             patch("src.skills.researcher.publisher.Publisher", return_value=mock_publisher),
             patch("src.skills.docbot.cache.read_cache", AsyncMock(return_value=None)),
+            patch(
+                "src.api.ip_user_resolver.increment_daily_report_count",
+                AsyncMock(return_value=1),
+            ),
         ):
             result = await save_reports_node(state, settings=mock_settings)
 
         assert "final_reports" in result
         assert isinstance(result["final_reports"], list)
+        assert result.get("daily_usage_charged") is True
         # 每个报告应含 download_urls (5 种格式)
         if result["final_reports"]:
             urls = result["final_reports"][0].get("download_urls", {})
@@ -305,12 +310,17 @@ class TestDocbotGraphFlow:
             patch("src.memory.report_store.ReportStore", return_value=mock_store),
             patch("src.skills.researcher.publisher.Publisher", return_value=mock_publisher),
             patch("src.skills.docbot.cache.read_cache", AsyncMock(return_value=None)),
+            patch(
+                "src.api.ip_user_resolver.increment_daily_report_count",
+                AsyncMock(return_value=1),
+            ),
         ):
             result = await save_reports_node(state, settings=mock_settings)
 
         # 仅 1 个有效报告被处理
         assert len(result["final_reports"]) == 1
         assert result["final_reports"][0]["report_type"] == "architecture"
+        assert result.get("daily_usage_charged") is True
 
 
 @pytest.mark.functional

@@ -251,6 +251,40 @@ def _build_download_urls(report_id: str) -> dict[str, str]:
     }
 
 
+async def _charge_daily_usage_if_needed(
+    *,
+    user_id: str,
+    agent_id: str,
+    report_ids: list[str],
+    already_charged: bool,
+    session_id: str = "",
+) -> bool:
+    """按成功报告份数扣减每日限额; 已扣减则跳过.
+
+    Returns:
+        True 表示本次或此前已完成扣减.
+    """
+    if already_charged:
+        return True
+    success_docs = len([rid for rid in report_ids if rid])
+    if success_docs <= 0 or not user_id or not agent_id:
+        return False
+    try:
+        from src.api.ip_user_resolver import increment_daily_report_count
+
+        await increment_daily_report_count(user_id, agent_id, delta=success_docs)
+        return True
+    except Exception:
+        logger.warning(
+            "每日文档计数递增失败 (user=%s, session=%s, delta=%d, 不阻断主流程)",
+            user_id,
+            session_id,
+            success_docs,
+            exc_info=True,
+        )
+        return False
+
+
 def _parse_docbot_instruction(content: str) -> dict[str, Any]:
     """解析用户消息中的 JSON 指令.
 
@@ -623,6 +657,8 @@ async def _stream_docbot(
             }
 
             final_state: dict[str, Any] = {}
+            # save_reports 节点入库后即扣减; 若节点已扣减则跳过, 避免 SSE 后半段断连漏计
+            usage_charged = False
 
             # 立即推送启动帧, 避免首节点耗时导致前端长时间空白
             start_msg = "\n\n> **[开始生成]** 文档生成流水线已启动，请稍候…\n"
@@ -674,6 +710,24 @@ async def _stream_docbot(
                             continue
                         final_state.update(delta)
 
+                        # 入库完成即扣减 (先于后续 SSE 推送, 降低客户端断连漏计风险)
+                        if node_name == "save_reports":
+                            if delta.get("daily_usage_charged"):
+                                usage_charged = True
+                            else:
+                                early_ids = [
+                                    str(r.get("report_id", ""))
+                                    for r in (delta.get("final_reports") or [])
+                                    if isinstance(r, dict) and r.get("report_id")
+                                ]
+                                usage_charged = await _charge_daily_usage_if_needed(
+                                    user_id=str(initial_state.get("user_id") or ""),
+                                    agent_id=str(initial_state.get("agent_id") or ""),
+                                    report_ids=early_ids,
+                                    already_charged=usage_charged,
+                                    session_id=session_id,
+                                )
+
                         label = node_label.get(node_name, node_name)
                         progress = f"\n\n> **[{label}]** "
                         if node_name == "spawn_b_tasks":
@@ -701,6 +755,8 @@ async def _stream_docbot(
 
             # 输出最终报告内容 (从 final_reports 列表提取, save_reports_node 已持久化到 DB)
             final_reports = final_state.get("final_reports") or []
+            if final_state.get("daily_usage_charged"):
+                usage_charged = True
             # spawn_b_tasks_node 收集的子图错误 (用于诊断)
             pipeline_errors = final_state.get("errors") or []
 
@@ -761,24 +817,14 @@ async def _stream_docbot(
                 if persisted_reports_meta:
                     yield _sse_chunk({"reports": persisted_reports_meta})
 
-                # 文档生成成功后按实际成功份数递增每日计数
-                # 每个成功持久化的 report_id 计 1 份; 失败/空结果不计数
-                _uid = initial_state.get("user_id", "") or ""
-                _aid = initial_state.get("agent_id", "") or ""
-                success_docs = len(persisted_report_ids)
-                if success_docs > 0 and _uid and _aid:
-                    try:
-                        from src.api.ip_user_resolver import increment_daily_report_count
-
-                        await increment_daily_report_count(_uid, _aid, delta=success_docs)
-                    except Exception:
-                        logger.warning(
-                            "每日文档计数递增失败 (user=%s, session=%s, delta=%d, 不阻断主流程)",
-                            _uid,
-                            session_id,
-                            success_docs,
-                            exc_info=True,
-                        )
+                # 兜底: 节点未扣减时再补扣一次 (mock 图 / 旧节点无 daily_usage_charged)
+                await _charge_daily_usage_if_needed(
+                    user_id=str(initial_state.get("user_id") or ""),
+                    agent_id=str(initial_state.get("agent_id") or ""),
+                    report_ids=persisted_report_ids,
+                    already_charged=usage_charged,
+                    session_id=session_id,
+                )
 
         except Exception as e:
             logger.exception("docbot 流水线执行失败")
@@ -832,6 +878,15 @@ async def _run_docbot(
     """
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
     created = int(time.time())
+    content = ""
+    usage: dict[str, Any] = {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+    }
+    report_ids: list[str] = []
+    reports_meta: list[dict[str, Any]] = []
+    usage_charged = False
 
     async with trace_agent(
         name="agentinsight-docbot",
@@ -853,8 +908,6 @@ async def _run_docbot(
     ):
         settings = get_settings()
         file_path: str | None = None
-        report_ids: list[str] = []
-        reports_meta: list[dict[str, Any]] = []
         try:
             graph = await _get_graph()
             final_state = await asyncio.wait_for(
@@ -863,6 +916,7 @@ async def _run_docbot(
             )
             # 从 final_reports 列表提取内容 (save_reports_node 已持久化到 DB)
             final_reports = final_state.get("final_reports") or []
+            usage_charged = bool(final_state.get("daily_usage_charged"))
             # spawn_b_tasks_node 收集的子图错误 (用于诊断)
             pipeline_errors = final_state.get("errors") or []
 
@@ -934,26 +988,21 @@ async def _run_docbot(
             reports_meta = []
 
     # 文档生成成功后按实际成功份数递增每日计数
-    # 仅报告内容非空且未失败时计数; 失败/异常不计数; 每个成功 report_id 计 1 份
-    _uid_final = initial_state.get("user_id", "") or ""
-    _aid_final = initial_state.get("agent_id", "") or ""
-    success_docs_final = len(report_ids)
+    # save_reports 已扣减时跳过; 失败/空结果不计数
+    _uid_final = str(initial_state.get("user_id") or "")
+    _aid_final = str(initial_state.get("agent_id") or "")
     if (
-        success_docs_final > 0
-        and content
+        content
         and "文档生成失败" not in content
         and "未生成报告内容" not in content
-        and _uid_final
-        and _aid_final
     ):
-        try:
-            from src.api.ip_user_resolver import increment_daily_report_count
-
-            await increment_daily_report_count(
-                _uid_final, _aid_final, delta=success_docs_final
-            )
-        except Exception as e:  # noqa: BLE001
-            logger.warning("每日文档计数递增失败 (不阻断响应): %s", e)
+        await _charge_daily_usage_if_needed(
+            user_id=_uid_final,
+            agent_id=_aid_final,
+            report_ids=report_ids,
+            already_charged=usage_charged,
+            session_id=session_id,
+        )
 
     return ChatCompletionResponse(
         id=completion_id,

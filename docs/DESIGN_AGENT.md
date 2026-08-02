@@ -1,8 +1,9 @@
 # agentinsight-docbot 智能体详细设计文档（代码级）
 
-> 版本：v1.1  
-> 日期：2026-07-20  
-> 配套：[architecture.md](./architecture.md) / [DESIGN_FRONTEND.md](./DESIGN_FRONTEND.md)
+> 版本：v1.2  
+> 日期：2026-08-02  
+> 开源版本：v0.1.0 Initial Release  
+> 配套：[architecture.md](./architecture.md) / [DESIGN_FRONTEND.md](./DESIGN_FRONTEND.md)（前端实现位于 `agentinsight-demo`，本仓库不含前端源码）
 
 ---
 
@@ -48,7 +49,8 @@ src/
 │   └── final_reviewer.py      # 子智能体 G 业务逻辑
 ├── config/docbot/
 │   ├── personas.py            # DOCBOT_REPORT_PERSONAS（8 种 persona）
-│   ├── outlines.py            # 8 种文档默认大纲加载器（读取 docs/*_OUTLINE.md）
+│   ├── outlines.py            # 8 种文档默认大纲加载器（读取 outlines/*.yaml）
+│   ├── outlines/              # 8 种文档默认大纲 YAML（architecture.yaml 等）
 │   └── prompts.py             # docbot 专属提示词
 ├── skills/docbot/
 │   ├── repo_loader.py         # 仓库克隆 / 文件枚举 / 分块
@@ -59,7 +61,7 @@ src/
 │   ├── merge_skill.py         # 任务五：合并去重
 │   ├── final_skill.py         # 任务六：终审
 │   └── cache.py               # Redis 缓存键管理
-├── skills/researcher/         # 从 AIR 拷贝
+├── skills/researcher/         # 从 AIR 拷贝（本仓库独立演进）
 │   ├── publisher.py           # 多格式导出（HTML/PDF/DOCX/JSON）
 │   └── image_generator.py     # DeepSeek SVG 生成
 ├── common/                    # 从 AIR 拷贝
@@ -69,22 +71,18 @@ src/
 ├── observability/             # 从 AIR 拷贝的 tracing.py
 ├── tools/git_mcp.py            # GitMCPAdapter（系统自带 MCP 适配）
 ├── api/
-│   ├── routes.py              # /v1/chat/completions（从 AIR 拷贝）
-│   ├── middleware.py          # 从 AIR 拷贝
-│   ├── session_routes.py      # 从 AIR 拷贝
-│   ├── repo_routes.py         # 新增：/v1/repos CRUD
-│   └── ip_user_resolver.py    # 从 AIR 拷贝
-└── config/settings.py          # 全局 Settings
+│   ├── routes.py              # /v1/chat/completions（docbot 裁剪版）
+│   ├── middleware.py          # JWT + 安全头 + 限流
+│   ├── session_routes.py      # /v1/sessions
+│   ├── repo_routes.py         # /v1/repos CRUD + sync
+│   └── ip_user_resolver.py    # IP 降级 user_id
+└── config/settings.py          # 全局 Settings（agent_name=agentinsight-docbot）
 scripts/init.sql                # 完整 DDL（基础 DDL + docbot 专属 DDL）
-docs/                           # 8 种文档默认大纲文件
-├── ARCHITECTURE_OUTLINE.md
-├── HLD_OUTLINE.md
-├── PRD_OUTLINE.md
-├── TEST_CASE_OUTLINE.md
-├── OPTIMIZATION_OUTLINE.md
-├── PERF_ANALYSIS_OUTLINE.md
-├── DEFECT_OUTLINE.md
-└── API_DOC_OUTLINE.md
+docs/                           # 架构与设计文档（非大纲真源；大纲 YAML 见 src/config/docbot/outlines/）
+├── architecture.md
+├── DESIGN_AGENT.md
+├── DESIGN_FRONTEND.md          # 前端交互设计（实现位于 agentinsight-demo）
+└── ARCHITECTURE_TEMPLATE.md
 ```
 
 ---

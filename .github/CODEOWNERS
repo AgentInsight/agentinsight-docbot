@@ -1,0 +1,32 @@
+# CODEOWNERS -- GitHub PR 自动审查分配规则
+
+*                           @agentinsight
+
+/src/graph/                 @agentinsight
+/src/agents/                @agentinsight
+/src/common/                @agentinsight
+/server.py                  @agentinsight
+
+/src/rag/                   @agentinsight
+/src/skills/docbot/         @agentinsight
+/src/api/                   @agentinsight
+/src/llm/                   @agentinsight
+/src/memory/                @agentinsight
+/src/tools/                 @agentinsight
+/src/config/                @agentinsight
+/src/observability/         @agentinsight
+/.env.template              @agentinsight
+
+/scripts/init.sql           @agentinsight
+/Dockerfile                 @agentinsight
+/docker-compose.yml         @agentinsight
+
+/AGENTS.md                  @agentinsight
+/SECURITY.md                @agentinsight
+/CONTRIBUTING.md            @agentinsight
+/docs/                      @agentinsight
+
+/.github/workflows/         @agentinsight
+/pyproject.toml             @agentinsight
+/evals/                     @agentinsight
+/tests/                     @agentinsight

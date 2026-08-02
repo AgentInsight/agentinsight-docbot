@@ -2,13 +2,15 @@
 
 | 元信息 | 值 |
 |--------|-----|
-| **版本** | v2.1 |
-| **日期** | 2026-07-31 |
+| **版本** | v2.2 |
+| **日期** | 2026-08-02 |
 | **端口** | 8068 |
 | **`agent_id`** | `agentinsight-docbot` |
 | **Compose 项目名** | `agentinsight-docbot`（与同机 researcher 8066 并存） |
+| **容器数** | **5**（postgres / redis / qdrant / embeddings / agent-docbot）；**无 SearXNG** |
+| **开源版本** | v0.1.0 Initial Release |
 | **真源规则** | 根目录 [`AGENTS.md`](../../AGENTS.md)、本目录 [`AGENTS.md`](../AGENTS.md) |
-| **架构 SSOT** | 本文档 `docs/ARCHITECTURE.md`（Windows 下与 `architecture.md` 同路径；仓库内仅此一份顶层架构文档，勿另建分叉副本） |
+| **架构 SSOT** | 本文档 [`docs/architecture.md`](./architecture.md)（仓库内仅此一份顶层架构文档，勿另建分叉副本） |
 | **代码级设计** | [`DESIGN_AGENT.md`](./DESIGN_AGENT.md)（节点签名 / 测试骨架；与本文冲突时以**最新代码**为准，并回写本文） |
 
 ## 专家审阅角色（≥10）
@@ -28,7 +30,7 @@
 | 安全合规工程师 | `GIT_CREDENTIAL_KEY` AES-GCM、仓库 URL 白名单 |
 | Docker/部署工程师 | 5 容器编排、无 SearXNG |
 | 测试/CI 工程师 | `tests/` 与 docbot 专属 e2e |
-| 文档工程师 | 本文为顶层架构 SSOT（`docs/ARCHITECTURE.md`）；[`DESIGN_AGENT.md`](./DESIGN_AGENT.md) 为代码级设计；第 15–16 章覆盖纲要 LLM 优化与代码→LLM 输入装配 |
+| 文档工程师 | 本文为顶层架构 SSOT（`docs/architecture.md`）；[`DESIGN_AGENT.md`](./DESIGN_AGENT.md) 为代码级设计；第 15–16 章覆盖纲要 LLM 优化与代码→LLM 输入装配 |
 
 ---
 

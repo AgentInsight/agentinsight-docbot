@@ -1,39 +1,43 @@
 # agentinsight-docbot 前端详细设计文档（代码级）
 
-> 版本：v1.1  
-> 日期：2026-07-20  
-> 配套：[architecture.md](./architecture.md) / [DESIGN_AGENT.md](./DESIGN_AGENT.md)
+> 版本：v1.2  
+> 日期：2026-08-02  
+> 开源版本：v0.1.0 Initial Release  
+> 配套：[architecture.md](./architecture.md) / [DESIGN_AGENT.md](./DESIGN_AGENT.md)  
+> **实现位置**：前端源码已划归独立子项目 [`agentinsight-demo`](../../agentinsight-demo)（本仓库 **不含** `frontend/` 与 `static/index.html`）。
 
 ---
 
 ## 0. 文档导读
 
-本文档是 `agentinsight-docbot`（下文简称 **docbot**）前端侧的代码级详细设计文档。核心要点：
+本文档描述 **docbot** 在演示平台中的前端交互与组件契约。核心要点：
 
-1. **独立 frontend 工程**：docbot 自带 `frontend/` 工程在本仓库内独立维护，不依赖任何外部项目。
-2. **技术栈**：Next.js 15 + React 19 + Zustand 5 + Tailwind CSS 4 + Vercel AI SDK 4.0 + next-intl。
-3. **核心组件**：5 个核心组件（DocbotInput / RepoConfigPanel / ReportTypeSelect / RepoSelect / LanguageSelect）。
-4. **API 客户端**：`/v1/repos` CRUD + 测试 + 同步。
-5. **多语言**：2 种语言（简体中文 / English）。
-6. **文档类型**：8 种（技术架构 / 概要设计 / 需求 / 测试用例 / 系统优化 / 性能分析 / 系统缺陷 / API 文档）。
-7. **主框体**：代码仓库下拉 + 报告类型多选 + 语言选择 + 一键生成按钮。
-8. **不暴露 MCP 配置**：`mcp-server-git` / `mcp-server-filesystem` 由系统启动时自动注册，前端不提供 MCP 配置面板。
+1. **UI 归属**：实现位于 `agentinsight-demo`（UI-only）；本仓库仅暴露 OpenAI 兼容 API（端口 **8068**）。
+2. **技术栈**：Next.js 15 + React 19 + Zustand 5 + Tailwind CSS 4 + next-intl（见 demo `package.json`）。
+3. **核心组件**：DocbotInput / RepoConfigPanel / ReportTypeSelect / RepoSelect / LanguageSelect 等。
+4. **API 客户端**：`/v1/repos` CRUD + 测试 + 同步；聊天走 `/v1/chat/completions` SSE。
+5. **多语言**：`zh` / `en`。
+6. **文档类型**：8 种（architecture / design / requirements / testcase / optimization / performance / defect / api_doc）。
+7. **主框体**：代码仓库下拉 + 报告类型多选 + 语言选择 + 一键生成。
+8. **不暴露 MCP 配置**：系统 MCP 启动时自动注册；`settingsPanels` 不含 `MCPConfigPanel`。
+
+> 下文目录路径以 **demo 仓库**为准；若仍写 `agentinsight-docbot/frontend/`，视为历史草案路径，请对照 `agentinsight-demo/`。
 
 ---
 
 ## 1. 目录结构
 
 ```
-agentinsight-docbot/frontend/
+agentinsight-demo/                 # 实际前端工程（非本仓库）
 ├── lib/
-│   ├── agents.config.ts          # 单 Agent SSOT 配置（docbot）
+│   ├── agents.config.ts          # 多 Agent SSOT（含 docbot + researcher）
 │   ├── api-client.ts             # API 客户端（chat + repo API）
 │   └── stores/
 │       ├── agent-store.ts        # Agent 状态（currentAgent / currentSessionId）
 │       └── docbot-store.ts       # docbot Zustand store
 ├── components/
 │   ├── chat/
-│   │   ├── chat-input.tsx        # 通用输入框（保留，docbot 不使用）
+│   │   ├── chat-input.tsx        # 通用输入框（researcher 使用）
 │   │   ├── docbot-input.tsx      # docbot 主输入框
 │   │   ├── report-type-select.tsx # 报告类型多选
 │   │   ├── repo-select.tsx       # 代码仓库下拉
@@ -1783,7 +1787,7 @@ export function useDocbotGenerate() {
 
 ## 13. 测试页（`static/index.html`）
 
-docbot 后端在 `static/index.html` 提供一个轻量级测试页，用于快速验证 `/v1/chat/completions` 与 `/v1/repos` 端点。测试页固定指向端口 8068 与 `agent_id='agentinsight-docbot'`。
+本仓库**不再**提供 `static/index.html` 测试页（前端职责划归 `agentinsight-demo`）。联调请使用演示平台（容器端口 **8801** / 本地 **3000**）或直接调用 `http://localhost:8068` 的 OpenAI 兼容 API。
 
 测试页**不包含**以下功能（与后端不暴露的端点一致）：
 - 不发起 `POST /v1/feedback`（docbot 不启用人审）

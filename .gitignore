@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+
+# 构建产物
+build/
+dist/
+*.egg
+
+# 环境变量 (含密钥, 禁止入仓)
+.env
+.env.agent
+.env.prod
+.env.dev
+.env.local
+!.env.template
+
+# 上传 / 克隆仓库缓存
+uploads/
+temp/
+/temp
+
+# 离线包由主目录 packages/ 统一管理, 本子项目不保留本地 packages/
+
+# 临时文件
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db
+ruff_*.txt
+*_output.txt
+*_out.txt
+
+# 数据
+data/
+sessions/
+
+# 测试产物
+test_results/
+tests/manual/
+/evals/rag/results
+/evals/agent/results
+
+# Docker override (本地开发可选)
+docker-compose.override.yml

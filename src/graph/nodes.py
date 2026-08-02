@@ -384,6 +384,27 @@ async def save_reports_node(state: dict, settings: Any | None = None) -> dict:
 
         span.update(output={"saved_count": len(saved)})
 
+        # 成功入库后立即扣减每日限额 (与持久化同节点, 避免 SSE 断连导致 routes 层漏计)
+        # daily_usage_charged=True 时 routes 层跳过二次扣减
+        daily_usage_charged = False
+        if saved and user_id and agent_id:
+            try:
+                from src.api.ip_user_resolver import increment_daily_report_count
+
+                await increment_daily_report_count(
+                    user_id, agent_id, delta=len(saved)
+                )
+                daily_usage_charged = True
+            except Exception as usage_err:  # noqa: BLE001
+                logger.warning(
+                    "save_reports 每日文档计数递增失败 (user=%s, agent=%s, delta=%d): %s",
+                    user_id,
+                    agent_id,
+                    len(saved),
+                    usage_err,
+                    exc_info=True,
+                )
+
         # P1-5.3.2: 文档生成成功后, 更新 last_doc_commit_hash 供下次漂移检测
         # 不阻断主流程, 失败仅记录日志
         if saved:
@@ -395,7 +416,10 @@ async def save_reports_node(state: dict, settings: Any | None = None) -> dict:
                     commit_err,
                 )
 
-        return {"final_reports": saved}
+        return {
+            "final_reports": saved,
+            "daily_usage_charged": daily_usage_charged,
+        }
 
 
 async def _update_repo_doc_commit_hash(

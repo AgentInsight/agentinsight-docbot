@@ -53,6 +53,9 @@ class DocbotState(TypedDict):
     # 每项: {report_id, title, summary, download_urls, image_svg, content_md}
     final_reports: list[dict]
 
+    # save_reports 已成功扣减每日限额时为 True; routes 层见此标志则跳过二次扣减
+    daily_usage_charged: bool
+
     # 错误累积 (operator.add; 节点失败时附加错误信息)
     errors: Annotated[list[str], operator.add]
 
